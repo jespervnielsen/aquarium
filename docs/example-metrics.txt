@@ -1,0 +1,8 @@
+# HELP http_request_duration_seconds Outgoing http duration histogram
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.05",component="ContentApi",status="200"} 213
+http_request_duration_seconds_bucket{le="0.5",component="ContentApi",status="200"} 1581
+http_request_duration_seconds_bucket{le="1",component="ContentApi",status="200"} 2007
+http_request_duration_seconds_bucket{le="+Inf",component="ContentApi",status="200"} 2007
+http_request_duration_seconds_sum{component="ContentApi",status="200"} 843.21
+http_request_duration_seconds_count{component="ContentApi",status="200"} 2007
