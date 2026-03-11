@@ -1,0 +1,8 @@
+{
+  "BrightcoveApi": {
+    "type": "fan"
+  },
+  "MetadataApi": {
+    "type": "branch"
+  }
+}

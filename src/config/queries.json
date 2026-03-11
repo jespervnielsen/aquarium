@@ -1,0 +1,10 @@
+{
+  "breakingNews": {
+    "color": "#ff7f50",
+    "shape": "triangle"
+  },
+  "frontPage": {
+    "color": "#42a5f5",
+    "shape": "oval"
+  }
+}
