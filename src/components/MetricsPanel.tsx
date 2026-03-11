@@ -1,4 +1,5 @@
 import type { MetricFamily } from '../utils/prometheusParser';
+import { deriveFishData, colorToCSS } from '../utils/fishUtils';
 
 interface MetricsPanelProps {
   families: MetricFamily[];
@@ -8,6 +9,8 @@ interface MetricsPanelProps {
 }
 
 export function MetricsPanel({ families, loading, error, lastFetch }: MetricsPanelProps) {
+  const fishList = deriveFishData(families);
+
   return (
     <aside className="metrics-panel">
       <div className="metrics-panel__header">
@@ -24,6 +27,34 @@ export function MetricsPanel({ families, loading, error, lastFetch }: MetricsPan
         <div className="metrics-error">
           <strong>Error:</strong> {error}
         </div>
+      )}
+
+      {fishList.length > 0 && (
+        <section className="fish-legend">
+          <h4 className="fish-legend__title">Fish</h4>
+          <ul className="fish-legend__list">
+            {fishList.map((fish) => (
+              <li key={fish.label} className="fish-legend__item">
+                <span
+                  className="fish-legend__swatch"
+                  style={{
+                    background: colorToCSS(fish.color),
+                    opacity: fish.isUp ? 1 : 0.35,
+                  }}
+                />
+                <span className="fish-legend__label" title={fish.label}>
+                  {fish.label}
+                </span>
+                <span className={`fish-legend__status fish-legend__status--${fish.isUp ? 'up' : 'down'}`}>
+                  {fish.isUp ? 'UP' : 'DOWN'}
+                </span>
+                {fish.value !== null && (
+                  <span className="fish-legend__value">{formatValue(fish.value)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {families.length === 0 && !loading && !error && (

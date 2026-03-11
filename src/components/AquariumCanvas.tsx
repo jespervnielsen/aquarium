@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Application, Graphics, Container, Ticker } from 'pixi.js';
 import type { MetricFamily } from '../utils/prometheusParser';
+import { deriveFishData } from '../utils/fishUtils';
 
 interface FishData {
   container: Container;
@@ -30,20 +31,6 @@ interface AquariumCanvasProps {
 }
 
 const WATER_COLOR = 0x0a1628;
-const MAX_FISH = 30;
-const FISH_COLORS = [
-  0xff6b6b, 0xffa07a, 0xffd700, 0x98fb98, 0x87ceeb,
-  0xda70d6, 0xff69b4, 0x20b2aa, 0xf0e68c, 0x7b68ee,
-];
-
-function hashColor(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) | 0;
-  }
-  return FISH_COLORS[Math.abs(hash) % FISH_COLORS.length];
-}
-
 function drawFish(fish: FishData, facingRight: boolean): void {
   fish.body.clear();
   fish.eye.clear();
@@ -248,32 +235,6 @@ function drawSurface(surf: Graphics, tick: number, width: number): void {
   surf.lineTo(width, 0);
   surf.lineTo(0, 0);
   surf.fill({ color: 0x1a8ccc, alpha: 0.25 });
-}
-
-function deriveFishData(families: MetricFamily[]): { label: string; color: number; isUp: boolean }[] {
-  const result: { label: string; color: number; isUp: boolean }[] = [];
-
-  // Look for `up` metric — each unique job/instance is a fish
-  const upFamily = families.find((f) => f.name === 'up');
-  if (upFamily && upFamily.samples.length > 0) {
-    for (const sample of upFamily.samples) {
-      const label = sample.labels.job ?? sample.labels.instance ?? 'service';
-      const isUp = sample.value === 1;
-      result.push({ label, color: hashColor(label), isUp });
-    }
-    return result.slice(0, MAX_FISH);
-  }
-
-  // Fallback: one fish per metric family
-  const seen = new Set<string>();
-  for (const family of families) {
-    if (!seen.has(family.name)) {
-      seen.add(family.name);
-      result.push({ label: family.name, color: hashColor(family.name), isUp: true });
-    }
-    if (result.length >= MAX_FISH) break;
-  }
-  return result;
 }
 
 export function AquariumCanvas({ families, width = 900, height = 600 }: AquariumCanvasProps) {
