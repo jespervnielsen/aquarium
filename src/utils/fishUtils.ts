@@ -24,6 +24,7 @@ export interface FishInfo {
   color: number;
   isUp: boolean;
   value: number | null;
+  speedScale: number;
 }
 
 export function deriveFishData(families: MetricFamily[]): FishInfo[] {
@@ -35,9 +36,28 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
     for (const sample of upFamily.samples) {
       const label = sample.labels.job ?? sample.labels.instance ?? 'service';
       const isUp = sample.value === 1;
-      result.push({ label, color: hashColor(label), isUp, value: sample.value });
+      result.push({ label, color: hashColor(label), isUp, value: sample.value, speedScale: 1.0 });
     }
     return result.slice(0, MAX_FISH);
+  }
+
+  // Use graphql_query_counter for query-based fish with count-driven speed scaling
+  const queryFamily = families.find((f) => f.name === 'graphql_query_counter');
+  if (queryFamily && queryFamily.samples.length > 0) {
+    let maxCount = 0;
+    for (const s of queryFamily.samples) {
+      if (s.value > maxCount) maxCount = s.value;
+    }
+    const logMax = Math.log(maxCount + 1);
+    for (const sample of queryFamily.samples) {
+      const queryName = sample.labels['queryName'];
+      if (!queryName) continue;
+      const logCount = Math.log(sample.value + 1);
+      // Scale from 0.5 (rare query) to 2.5 (most-used query)
+      const speedScale = 0.5 + (logMax > 0 ? logCount / logMax : 0) * 2.0;
+      result.push({ label: queryName, color: hashColor(queryName), isUp: true, value: sample.value, speedScale });
+    }
+    if (result.length > 0) return result.slice(0, MAX_FISH);
   }
 
   // Fallback: one fish per metric family
@@ -46,7 +66,7 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
     if (!seen.has(family.name)) {
       seen.add(family.name);
       const firstValue = family.samples.length > 0 ? family.samples[0].value : null;
-      result.push({ label: family.name, color: hashColor(family.name), isUp: true, value: firstValue });
+      result.push({ label: family.name, color: hashColor(family.name), isUp: true, value: firstValue, speedScale: 1.0 });
     }
     if (result.length >= MAX_FISH) break;
   }

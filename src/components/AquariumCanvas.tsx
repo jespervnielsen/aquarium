@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Application, Graphics, Container, Ticker } from 'pixi.js';
 import type { MetricFamily } from '../utils/prometheusParser';
-import { deriveFishData } from '../utils/fishUtils';
+import { deriveFishData, hashColor } from '../utils/fishUtils';
 
 interface FishData {
   container: Container;
@@ -13,6 +13,7 @@ interface FishData {
   wobbleSpeed: number;
   color: number;
   facingRight: boolean;
+  speedScale: number;
 }
 
 interface BubbleData {
@@ -24,6 +25,11 @@ interface BubbleData {
   alpha: number;
 }
 
+type CoralType = 'fan' | 'branch' | 'dome' | 'tube' | 'star';
+const CORAL_TYPE_LIST: CoralType[] = ['fan', 'branch', 'dome', 'tube', 'star'];
+const MAX_CORALS = 12;
+const HTTP_DURATION_METRIC_PREFIX = 'http_request_duration_seconds';
+
 interface AquariumCanvasProps {
   families: MetricFamily[];
   width?: number;
@@ -31,6 +37,129 @@ interface AquariumCanvasProps {
 }
 
 const WATER_COLOR = 0x0a1628;
+
+function hashCoralType(str: string): CoralType {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return CORAL_TYPE_LIST[Math.abs(hash) % CORAL_TYPE_LIST.length];
+}
+
+/** Linear blend of two hex colors. factor=0 → base, factor=1 → target. */
+function blendColor(base: number, target: number, factor: number): number {
+  const r = Math.round(((base >> 16) & 0xff) * (1 - factor) + ((target >> 16) & 0xff) * factor);
+  const g = Math.round(((base >> 8) & 0xff) * (1 - factor) + ((target >> 8) & 0xff) * factor);
+  const b = Math.round((base & 0xff) * (1 - factor) + (target & 0xff) * factor);
+  return (r << 16) | (g << 8) | b;
+}
+
+/** Warm orange-red used to tint slow corals. */
+const SLOW_CORAL_COLOR = 0xff4400;
+
+function drawCoralAt(gfx: Graphics, type: CoralType, color: number, x: number, y: number, avgLatency: number = 0): void {
+  // Tint toward orange-red for high avg latency (≥ 2 s = fully tinted)
+  const latencyFactor = Math.min(avgLatency / 2.0, 1.0);
+  const c = latencyFactor > 0 ? blendColor(color, SLOW_CORAL_COLOR, latencyFactor) : color;
+  switch (type) {
+    case 'fan': {
+      // Stem
+      gfx.moveTo(x, y);
+      gfx.lineTo(x, y - 30);
+      gfx.stroke({ color: c, width: 3, alpha: 0.9 });
+      // Fan ribs fanning upward in a semicircle
+      for (let i = 0; i < 7; i++) {
+        const angle = -Math.PI + (i / 6) * Math.PI;
+        gfx.moveTo(x, y - 30);
+        gfx.lineTo(x + Math.cos(angle) * 20, y - 30 + Math.sin(angle) * 20);
+        gfx.stroke({ color: c, width: 1.5, alpha: 0.65 });
+      }
+      break;
+    }
+    case 'branch': {
+      const drawBranch = (bx: number, by: number, angle: number, length: number, depth: number): void => {
+        if (depth <= 0 || length < 5) return;
+        const ex = bx + Math.cos(angle) * length;
+        const ey = by + Math.sin(angle) * length;
+        gfx.moveTo(bx, by);
+        gfx.lineTo(ex, ey);
+        gfx.stroke({ color: c, width: depth * 0.8 + 0.5, alpha: 0.85 });
+        drawBranch(ex, ey, angle - 0.5, length * 0.65, depth - 1);
+        drawBranch(ex, ey, angle + 0.5, length * 0.65, depth - 1);
+      };
+      drawBranch(x, y, -Math.PI / 2, 22, 3);
+      break;
+    }
+    case 'dome': {
+      // Base platform
+      gfx.rect(x - 16, y - 6, 32, 6);
+      gfx.fill({ color: c, alpha: 0.7 });
+      // Dome
+      gfx.ellipse(x, y - 14, 16, 12);
+      gfx.fill({ color: c, alpha: 0.85 });
+      break;
+    }
+    case 'tube': {
+      const offsets = [-9, -3, 3, 9];
+      for (let ti = 0; ti < offsets.length; ti++) {
+        const ox = offsets[ti];
+        const th = 22 + (ti % 2) * 6;
+        gfx.rect(x + ox - 2.5, y - th, 5, th);
+        gfx.fill({ color: c, alpha: 0.85 });
+        // Opening at tube top
+        gfx.ellipse(x + ox, y - th, 3.5, 2);
+        gfx.fill({ color: 0xffffff, alpha: 0.3 });
+      }
+      break;
+    }
+    case 'star': {
+      // Short stem
+      gfx.moveTo(x, y);
+      gfx.lineTo(x, y - 10);
+      gfx.stroke({ color: c, width: 3, alpha: 0.8 });
+      // Star/flower shape with alternating outer and inner radii
+      const spikes = 6;
+      const outerR = 16;
+      const innerR = 7;
+      const cx = x;
+      const cy = y - 10;
+      const firstAngle = -Math.PI / 2;
+      gfx.moveTo(cx + Math.cos(firstAngle) * outerR, cy + Math.sin(firstAngle) * outerR);
+      for (let si = 1; si < spikes * 2; si++) {
+        const angle = (si * Math.PI) / spikes - Math.PI / 2;
+        const r = si % 2 === 0 ? outerR : innerR;
+        gfx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+      }
+      gfx.lineTo(cx + Math.cos(firstAngle) * outerR, cy + Math.sin(firstAngle) * outerR);
+      gfx.fill({ color: c, alpha: 0.9 });
+      break;
+    }
+  }
+}
+
+function deriveCoralData(families: MetricFamily[]): { name: string; type: CoralType; color: number; avgLatency: number }[] {
+  const seen = new Set<string>();
+  const sumMap: Record<string, number> = {};
+  const countMap: Record<string, number> = {};
+  for (const family of families) {
+    if (!family.name.startsWith(HTTP_DURATION_METRIC_PREFIX)) continue;
+    for (const sample of family.samples) {
+      const component = sample.labels['component'];
+      if (!component) continue;
+      seen.add(component);
+      if (sample.name.endsWith('_sum')) sumMap[component] = sample.value;
+      else if (sample.name.endsWith('_count')) countMap[component] = sample.value;
+    }
+  }
+  return Array.from(seen).slice(0, MAX_CORALS).map((name) => {
+    const avgLatency =
+      sumMap[name] !== undefined && countMap[name] !== undefined && countMap[name] > 0
+        ? sumMap[name] / countMap[name]
+        : 0;
+    return { name, type: hashCoralType(name), color: hashColor(name), avgLatency };
+  });
+}
+
 function drawFish(fish: FishData, facingRight: boolean): void {
   fish.body.clear();
   fish.eye.clear();
@@ -67,7 +196,8 @@ function createFish(
   app: Application,
   stage: Container,
   color: number,
-  label: string
+  label: string,
+  speedScale: number = 1.0
 ): FishData {
   const container = new Container();
   container.label = label;
@@ -84,7 +214,7 @@ function createFish(
   const y = 80 + Math.random() * (height - 160);
   container.position.set(x, y);
 
-  const speed = 1.0 + Math.random() * 1.5;
+  const speed = speedScale * (1.0 + Math.random() * 1.5);
   const angle = Math.random() * Math.PI * 2;
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed * 0.4;
@@ -100,6 +230,7 @@ function createFish(
     wobbleSpeed: 0.05 + Math.random() * 0.04,
     color,
     facingRight,
+    speedScale,
   };
 
   drawFish(fish, facingRight);
@@ -140,7 +271,7 @@ function updateFish(fish: FishData, width: number, height: number): void {
   fish.vy += (Math.random() - 0.5) * 0.02;
 
   // Clamp speed
-  const maxSpeed = 3.0;
+  const maxSpeed = fish.speedScale * 3.0;
   const speed = Math.sqrt(fish.vx * fish.vx + fish.vy * fish.vy);
   if (speed > maxSpeed) {
     fish.vx = (fish.vx / speed) * maxSpeed;
@@ -243,6 +374,7 @@ export function AquariumCanvas({ families, width = 900, height = 600 }: Aquarium
   const fishRef = useRef<Map<string, FishData>>(new Map());
   const bubblesRef = useRef<BubbleData[]>([]);
   const tickRef = useRef(0);
+  const coralGfxRef = useRef<Graphics | null>(null);
 
   // Initialise PixiJS once
   useEffect(() => {
@@ -279,6 +411,10 @@ export function AquariumCanvas({ families, width = 900, height = 600 }: Aquarium
       const seabedLayer = new Container();
       const seabed = new Graphics();
       seabedLayer.addChild(seabed);
+
+      const coralGfx = new Graphics();
+      seabedLayer.addChild(coralGfx);
+      coralGfxRef.current = coralGfx;
 
       const weedLayer = new Container();
       const seaweed = new Graphics();
@@ -350,6 +486,7 @@ export function AquariumCanvas({ families, width = 900, height = 600 }: Aquarium
 
     return () => {
       destroyed = true;
+      coralGfxRef.current = null;
       if (appRef.current) {
         appRef.current.destroy(true);
         appRef.current = null;
@@ -382,9 +519,9 @@ export function AquariumCanvas({ families, width = 900, height = 600 }: Aquarium
     }
 
     // Add new fish
-    for (const { label, color, isUp } of desired) {
+    for (const { label, color, isUp, speedScale } of desired) {
       if (!fishRef.current.has(label)) {
-        const fish = createFish(app, fishLayer, color, label);
+        const fish = createFish(app, fishLayer, color, label, speedScale);
         if (!isUp) {
           fish.container.alpha = 0.35;
         }
@@ -395,6 +532,23 @@ export function AquariumCanvas({ families, width = 900, height = 600 }: Aquarium
         fish.container.alpha = isUp ? 1.0 : 0.35;
       }
     }
+  }, [families]);
+
+  // Sync corals with metrics
+  useEffect(() => {
+    const app = appRef.current;
+    const coralGfx = coralGfxRef.current;
+    if (!app || !coralGfx) return;
+
+    const corals = deriveCoralData(families);
+    const w = app.canvas.width;
+    const h = app.canvas.height;
+
+    coralGfx.clear();
+    corals.forEach(({ type, color, avgLatency }, i) => {
+      const x = ((i + 0.5) / corals.length) * w;
+      drawCoralAt(coralGfx, type, color, x, h - 40, avgLatency);
+    });
   }, [families]);
 
   return (
