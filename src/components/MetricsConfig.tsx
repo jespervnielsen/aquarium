@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+export const TEST_ENDPOINT_URL = '/dev/metrics';
+
 interface MetricsConfigProps {
   url: string;
   interval: number;
@@ -7,14 +9,28 @@ interface MetricsConfigProps {
 }
 
 export function MetricsConfig({ url, interval, onSave }: MetricsConfigProps) {
-  const [draftUrl, setDraftUrl] = useState(url);
+  const [draftUrl, setDraftUrl] = useState(url === TEST_ENDPOINT_URL ? '' : url);
   const [draftInterval, setDraftInterval] = useState(interval);
   const [open, setOpen] = useState(!url);
+  const [useTestEndpoint, setUseTestEndpoint] = useState(url === TEST_ENDPOINT_URL);
+  // Remembers the last custom URL so it can be restored when unchecking the test endpoint.
+  const [prevCustomUrl, setPrevCustomUrl] = useState(url === TEST_ENDPOINT_URL ? '' : url);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave(draftUrl.trim(), draftInterval);
+    const finalUrl = useTestEndpoint ? TEST_ENDPOINT_URL : draftUrl.trim();
+    onSave(finalUrl, draftInterval);
     setOpen(false);
+  }
+
+  function handleTestEndpointToggle(checked: boolean) {
+    if (checked) {
+      setPrevCustomUrl(draftUrl.trim());
+      setDraftUrl('');
+    } else {
+      setDraftUrl(prevCustomUrl);
+    }
+    setUseTestEndpoint(checked);
   }
 
   if (!open) {
@@ -39,16 +55,34 @@ export function MetricsConfig({ url, interval, onSave }: MetricsConfigProps) {
         with CORS enabled.
       </p>
       <form onSubmit={handleSubmit} className="config-form">
-        <label htmlFor="metrics-url">Prometheus metrics URL</label>
-        <input
-          id="metrics-url"
-          type="url"
-          value={draftUrl}
-          onChange={(e) => setDraftUrl(e.target.value)}
-          placeholder="http://localhost:9090/metrics"
-          className="config-input"
-          autoFocus
-        />
+        <label className="config-checkbox-label">
+          <input
+            type="checkbox"
+            checked={useTestEndpoint}
+            onChange={(e) => handleTestEndpointToggle(e.target.checked)}
+            className="config-checkbox"
+          />
+          Use built-in test endpoint
+        </label>
+        {useTestEndpoint ? (
+          <p className="config-test-note">
+            The built-in simulator (<code>{TEST_ENDPOINT_URL}</code>) will be used. You can
+            activate test scenarios (traffic spikes, errors, etc.) directly from the main view.
+          </p>
+        ) : (
+          <>
+            <label htmlFor="metrics-url">Prometheus metrics URL</label>
+            <input
+              id="metrics-url"
+              type="url"
+              value={draftUrl}
+              onChange={(e) => setDraftUrl(e.target.value)}
+              placeholder="http://localhost:9090/metrics"
+              className="config-input"
+              autoFocus
+            />
+          </>
+        )}
         <label htmlFor="poll-interval">Poll interval (seconds)</label>
         <input
           id="poll-interval"

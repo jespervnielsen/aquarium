@@ -363,3 +363,78 @@
     max-height: 300px;
   }
 }
+
+/* ── Test scenario controls ─────────────────────────────────── */
+.test-controls {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 8px 12px;
+  background: rgba(100 180 255 / 0.06);
+  border: 1px solid rgba(100 180 255 / 0.15);
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.test-controls__label {
+  font-size: 0.78rem;
+  color: rgba(255 255 255 / 0.5);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.test-controls__item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: #c8dff5;
+  cursor: pointer;
+  user-select: none;
+}
+
+.test-controls__item:hover {
+  color: #87ceeb;
+}
+
+.test-controls__checkbox {
+  accent-color: #64b4ff;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* ── Config checkbox ─────────────────────────────────────────── */
+.config-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #c8dff5;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.config-checkbox {
+  accent-color: #64b4ff;
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.config-test-note {
+  font-size: 0.82rem;
+  color: rgba(255 255 255 / 0.55);
+  background: rgba(100 180 255 / 0.06);
+  border: 1px solid rgba(100 180 255 / 0.15);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 0;
+  line-height: 1.5;
+}
