@@ -1,0 +1,17 @@
+{
+  "name": "aquarium",
+  "version": "1.0.0",
+  "description": "Aquarium visualization with automatic discovery of GraphQL queries and backend components",
+  "main": "src/discovery.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node"
+  },
+  "license": "MIT"
+}
