@@ -160,7 +160,6 @@ function deriveCoralData(families: MetricFamily[]): { name: string; type: CoralT
   });
 }
 
-
 function drawFish(fish: FishData, facingRight: boolean): void {
   fish.body.clear();
   fish.eye.clear();
