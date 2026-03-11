@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState } from 'react';
 
 interface MetricsConfigProps {
   url: string;
@@ -7,46 +7,69 @@ interface MetricsConfigProps {
 }
 
 export function MetricsConfig({ url, interval, onSave }: MetricsConfigProps) {
-  const [open, setOpen] = useState(false);
-  const [urlInput, setUrlInput] = useState(url);
-  const [intervalInput, setIntervalInput] = useState(String(interval));
+  const [draftUrl, setDraftUrl] = useState(url);
+  const [draftInterval, setDraftInterval] = useState(interval);
+  const [open, setOpen] = useState(!url);
 
-  const handleSubmit = (e: FormEvent) => {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const ms = Math.max(1000, parseInt(intervalInput, 10) || 5000);
-    onSave(urlInput.trim(), ms);
+    onSave(draftUrl.trim(), draftInterval);
     setOpen(false);
-  };
+  }
+
+  if (!open) {
+    return (
+      <button
+        className="config-toggle"
+        onClick={() => setOpen(true)}
+        title="Configure metrics endpoint"
+        aria-label="Configure metrics endpoint"
+      >
+        ⚙️ Configure
+      </button>
+    );
+  }
 
   return (
-    <div className="config-widget">
-      <button className="config-btn" onClick={() => setOpen((o) => !o)}>
-        ⚙ Settings
-      </button>
-      {open && (
-        <form className="config-panel" onSubmit={handleSubmit}>
-          <label>
-            Metrics URL
-            <input
-              type="url"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="http://localhost:9090/metrics"
-            />
-          </label>
-          <label>
-            Poll interval (ms)
-            <input
-              type="number"
-              min={1000}
-              step={500}
-              value={intervalInput}
-              onChange={(e) => setIntervalInput(e.target.value)}
-            />
-          </label>
-          <button type="submit">Apply</button>
-        </form>
-      )}
+    <div className="config-panel" role="dialog" aria-label="Metrics configuration">
+      <h2>Configure Metrics Endpoint</h2>
+      <p className="config-note">
+        Enter a Prometheus <code>/metrics</code> URL. The endpoint must be accessible from your
+        browser (CORS headers required). For local testing, start Prometheus or a metrics exporter
+        with CORS enabled.
+      </p>
+      <form onSubmit={handleSubmit} className="config-form">
+        <label htmlFor="metrics-url">Prometheus metrics URL</label>
+        <input
+          id="metrics-url"
+          type="url"
+          value={draftUrl}
+          onChange={(e) => setDraftUrl(e.target.value)}
+          placeholder="http://localhost:9090/metrics"
+          className="config-input"
+          autoFocus
+        />
+        <label htmlFor="poll-interval">Poll interval (seconds)</label>
+        <input
+          id="poll-interval"
+          type="number"
+          min={1}
+          max={300}
+          value={draftInterval}
+          onChange={(e) => setDraftInterval(Number(e.target.value))}
+          className="config-input config-input--narrow"
+        />
+        <div className="config-actions">
+          <button type="submit" className="btn btn--primary">
+            Save
+          </button>
+          {url && (
+            <button type="button" className="btn" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
     </div>
   );
 }
