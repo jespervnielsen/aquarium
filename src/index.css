@@ -1,0 +1,63 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: #e0eaf8;
+  background-color: #070f1c;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+button {
+  border-radius: 6px;
+  border: 1px solid rgba(255 255 255 / 0.15);
+  padding: 0.45em 1em;
+  font-size: 0.9em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: rgba(255 255 255 / 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+button:hover {
+  background-color: rgba(255 255 255 / 0.14);
+  border-color: rgba(100 180 255 / 0.5);
+}
+button:focus-visible {
+  outline: 2px solid #64b4ff;
+  outline-offset: 2px;
+}
+
+input {
+  font-family: inherit;
+  font-size: 0.95em;
+}
+
+code {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.9em;
+  background: rgba(255 255 255 / 0.08);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+}
