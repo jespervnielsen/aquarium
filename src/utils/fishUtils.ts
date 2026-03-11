@@ -1,0 +1,54 @@
+import type { MetricFamily } from './prometheusParser';
+
+export const MAX_FISH = 30;
+
+export const FISH_COLORS = [
+  0xff6b6b, 0xffa07a, 0xffd700, 0x98fb98, 0x87ceeb,
+  0xda70d6, 0xff69b4, 0x20b2aa, 0xf0e68c, 0x7b68ee,
+];
+
+export function hashColor(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return FISH_COLORS[Math.abs(hash) % FISH_COLORS.length];
+}
+
+export function colorToCSS(color: number): string {
+  return '#' + color.toString(16).padStart(6, '0');
+}
+
+export interface FishInfo {
+  label: string;
+  color: number;
+  isUp: boolean;
+  value: number | null;
+}
+
+export function deriveFishData(families: MetricFamily[]): FishInfo[] {
+  const result: FishInfo[] = [];
+
+  // Look for `up` metric — each unique job/instance is a fish
+  const upFamily = families.find((f) => f.name === 'up');
+  if (upFamily && upFamily.samples.length > 0) {
+    for (const sample of upFamily.samples) {
+      const label = sample.labels.job ?? sample.labels.instance ?? 'service';
+      const isUp = sample.value === 1;
+      result.push({ label, color: hashColor(label), isUp, value: sample.value });
+    }
+    return result.slice(0, MAX_FISH);
+  }
+
+  // Fallback: one fish per metric family
+  const seen = new Set<string>();
+  for (const family of families) {
+    if (!seen.has(family.name)) {
+      seen.add(family.name);
+      const firstValue = family.samples.length > 0 ? family.samples[0].value : null;
+      result.push({ label: family.name, color: hashColor(family.name), isUp: true, value: firstValue });
+    }
+    if (result.length >= MAX_FISH) break;
+  }
+  return result;
+}

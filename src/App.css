@@ -283,6 +283,79 @@
   border-radius: 2px;
 }
 
+/* ── Fish legend ────────────────────────────────────────────── */
+.fish-legend {
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255 255 255 / 0.08);
+  padding-bottom: 12px;
+}
+
+.fish-legend__title {
+  font-size: 0.78rem;
+  color: rgba(255 255 255 / 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0 0 6px 0;
+}
+
+.fish-legend__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fish-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.fish-legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fish-legend__label {
+  color: #c8dff5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fish-legend__status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.fish-legend__status--up {
+  background: rgba(80 200 120 / 0.15);
+  color: #50c878;
+}
+
+.fish-legend__status--down {
+  background: rgba(220 80 80 / 0.15);
+  color: #f08080;
+}
+
+.fish-legend__value {
+  color: #98fb98;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .metrics-panel {
