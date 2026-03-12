@@ -89,6 +89,28 @@ describe('generateMetricsText', () => {
     expect(text).toContain('graphql_request_error_total ')
   })
 
+  it('includes process_start_time_seconds gauge with a numeric value', () => {
+    const text = generateMetricsText()
+    expect(text, 'missing HELP for process_start_time_seconds').toContain(
+      '# HELP process_start_time_seconds ',
+    )
+    expect(text, 'missing TYPE for process_start_time_seconds').toContain(
+      '# TYPE process_start_time_seconds gauge',
+    )
+    expect(text).toMatch(/^process_start_time_seconds \d+$/m)
+  })
+
+  it('different containers produce different process_start_time_seconds values', () => {
+    // Collect start-time values over many polls; we expect at least two distinct values
+    // because the simulator has 10-20 containers with unique start times.
+    const startTimes = new Set<string>()
+    for (let i = 0; i < 50; i++) {
+      const m = /^process_start_time_seconds (\d+)$/m.exec(generateMetricsText())
+      if (m) startTimes.add(m[1])
+    }
+    expect(startTimes.size).toBeGreaterThan(1)
+  })
+
   it('produces valid Prometheus data lines (metric[{labels}] value)', () => {
     const text = generateMetricsText()
     // Only check non-comment, non-blank lines.
