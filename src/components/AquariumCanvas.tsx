@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Application, Graphics, Container, Ticker } from 'pixi.js';
 import type { MetricFamily } from '../utils/prometheusParser';
-import { deriveFishData, hashColor } from '../utils/fishUtils';
+import { deriveFishData, hashColor, type FishPattern } from '../utils/fishUtils';
 
 interface FishData {
   container: Container;
@@ -12,6 +12,7 @@ interface FishData {
   wobble: number;
   wobbleSpeed: number;
   color: number;
+  pattern: FishPattern;
   facingRight: boolean;
   speedScale: number;
 }
@@ -173,6 +174,47 @@ function drawFish(fish: FishData, facingRight: boolean): void {
   fish.body.ellipse(0, 0, 22, 12);
   fish.body.fill({ color });
 
+  // Pattern overlay (drawn on top of body, below tail/fin)
+  const patternAlpha = 0.45;
+  switch (fish.pattern) {
+    case 'stripes': {
+      // Two horizontal bands across the body (like a mackerel)
+      fish.body.rect(-19, -5, 38, 3);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha });
+      fish.body.rect(-19, 2, 38, 3);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha });
+      break;
+    }
+    case 'spots': {
+      // Three spots scattered within the body (like a trout)
+      fish.body.circle(-9, -2, 3.5);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha + 0.1 });
+      fish.body.circle(0, 4, 3);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha + 0.1 });
+      fish.body.circle(8, -4, 3.5);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha + 0.1 });
+      break;
+    }
+    case 'patch': {
+      // Darker patch on the rear half — the half opposite the eye (like a damselfish)
+      const patchX = facingRight ? -22 : 6;
+      fish.body.rect(patchX, -11, 16, 22);
+      fish.body.fill({ color: darkerColor, alpha: 0.35 });
+      break;
+    }
+    case 'bands': {
+      // Two vertical stripes crossing the body (like a clownfish)
+      fish.body.rect(-9, -11, 5, 22);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha });
+      fish.body.rect(3, -11, 5, 22);
+      fish.body.fill({ color: darkerColor, alpha: patternAlpha });
+      break;
+    }
+    case 'plain':
+    default:
+      break;
+  }
+
   // Tail (triangle)
   const tailX = facingRight ? -22 : 22;
   fish.body.moveTo(tailX, 0);
@@ -198,6 +240,7 @@ function createFish(
   app: Application,
   stage: Container,
   color: number,
+  pattern: FishPattern,
   label: string,
   speedScale: number = 1.0
 ): FishData {
@@ -231,6 +274,7 @@ function createFish(
     wobble: Math.random() * Math.PI * 2,
     wobbleSpeed: 0.05 + Math.random() * 0.04,
     color,
+    pattern,
     facingRight,
     speedScale,
   };
@@ -523,9 +567,9 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
     }
 
     // Add new fish
-    for (const { label, color, isUp, speedScale } of desired) {
+    for (const { label, color, pattern, isUp, speedScale } of desired) {
       if (!fishRef.current.has(label)) {
-        const fish = createFish(app, fishLayer, color, label, speedScale);
+        const fish = createFish(app, fishLayer, color, pattern, label, speedScale);
         if (!isUp) {
           fish.container.alpha = 0.35;
         }

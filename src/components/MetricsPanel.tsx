@@ -1,5 +1,25 @@
 import type { MetricFamily } from '../utils/prometheusParser';
-import { deriveFishData, colorToCSS } from '../utils/fishUtils';
+import { deriveFishData, colorToCSS, type FishPattern } from '../utils/fishUtils';
+
+/** Returns a CSS backgroundImage value that overlays the given pattern on a solid colour swatch. */
+function patternToCSS(pattern: FishPattern): string {
+  switch (pattern) {
+    case 'stripes':
+      return 'repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)';
+    case 'spots':
+      return (
+        'radial-gradient(circle at 30% 40%, rgba(0,0,0,0.4) 22%, transparent 22%), ' +
+        'radial-gradient(circle at 70% 65%, rgba(0,0,0,0.4) 22%, transparent 22%)'
+      );
+    case 'patch':
+      return 'linear-gradient(135deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.35) 45%, transparent 45%)';
+    case 'bands':
+      return 'repeating-linear-gradient(90deg, transparent 0px, transparent 3px, rgba(0,0,0,0.35) 3px, rgba(0,0,0,0.35) 5px)';
+    case 'plain':
+    default:
+      return 'none';
+  }
+}
 
 interface MetricsPanelProps {
   families: MetricFamily[];
@@ -38,7 +58,8 @@ export function MetricsPanel({ families, loading, error, lastFetch }: MetricsPan
                 <span
                   className="fish-legend__swatch"
                   style={{
-                    background: colorToCSS(fish.color),
+                    backgroundColor: colorToCSS(fish.color),
+                    backgroundImage: patternToCSS(fish.pattern),
                     opacity: fish.isUp ? 1 : 0.35,
                   }}
                 />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveFishData, hashColor, colorToCSS, FISH_COLORS } from './fishUtils'
+import { deriveFishData, hashColor, hashPattern, colorToCSS, FISH_COLORS, FISH_PATTERNS } from './fishUtils'
 import type { MetricFamily } from './prometheusParser'
 
 // ---------------------------------------------------------------------------
@@ -24,6 +24,41 @@ describe('colorToCSS', () => {
     expect(colorToCSS(0xff6b6b)).toBe('#ff6b6b')
     expect(colorToCSS(0x000000)).toBe('#000000')
     expect(colorToCSS(0xffffff)).toBe('#ffffff')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hashPattern
+// ---------------------------------------------------------------------------
+describe('hashPattern', () => {
+  it('returns a value from FISH_PATTERNS', () => {
+    const pattern = hashPattern('breakingNews')
+    expect(FISH_PATTERNS).toContain(pattern)
+  })
+
+  it('is deterministic', () => {
+    expect(hashPattern('serviceA')).toBe(hashPattern('serviceA'))
+    expect(hashPattern('breakingNews')).toBe(hashPattern('breakingNews'))
+  })
+
+  it('handles empty string without throwing', () => {
+    expect(() => hashPattern('')).not.toThrow()
+  })
+
+  it('produces different patterns for some different names', () => {
+    // At least some names should differ in pattern (not all can be same)
+    const patterns = ['breakingNews', 'frontPage', 'sportsApi', 'weatherFeed', 'videoStream'].map(hashPattern)
+    const unique = new Set(patterns)
+    expect(unique.size).toBeGreaterThan(1)
+  })
+
+  it('pattern and color can vary independently', () => {
+    // Two names may share a color but differ in pattern, or vice-versa
+    const names = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta']
+    const pairs = names.map((n) => ({ color: hashColor(n), pattern: hashPattern(n) }))
+    // Verify that not every pair is identical (color+pattern correlation is not total)
+    const unique = new Set(pairs.map((p) => `${p.color}-${p.pattern}`))
+    expect(unique.size).toBeGreaterThan(1)
   })
 })
 
@@ -62,7 +97,14 @@ describe('deriveFishData – up metric', () => {
     expect(b.isUp).toBe(false)
   })
 
-  it('defaults speedScale to 1.0', () => {
+  it('each fish has a valid pattern', () => {
+    const fish = deriveFishData(upFamilies)
+    for (const f of fish) {
+      expect(FISH_PATTERNS).toContain(f.pattern)
+    }
+  })
+
+  it('defaults speedScale to 1.0 (up metric)', () => {
     const fish = deriveFishData(upFamilies)
     for (const f of fish) {
       expect(f.speedScale).toBe(1.0)
@@ -128,6 +170,13 @@ describe('deriveFishData – graphql_query_counter', () => {
       expect(f.isUp).toBe(true)
     }
   })
+
+  it('each fish has a valid pattern (graphql branch)', () => {
+    const fish = deriveFishData(queryFamilies)
+    for (const f of fish) {
+      expect(FISH_PATTERNS).toContain(f.pattern)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -148,6 +197,13 @@ describe('deriveFishData – fallback', () => {
     const fish = deriveFishData(genericFamilies)
     for (const f of fish) {
       expect(f.speedScale).toBe(1.0)
+    }
+  })
+
+  it('each fish has a valid pattern (fallback branch)', () => {
+    const fish = deriveFishData(genericFamilies)
+    for (const f of fish) {
+      expect(FISH_PATTERNS).toContain(f.pattern)
     }
   })
 
