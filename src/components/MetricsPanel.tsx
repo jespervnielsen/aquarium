@@ -1,5 +1,6 @@
 import type { MetricFamily } from '../utils/prometheusParser';
 import { deriveFishData, colorToCSS, type FishPattern } from '../utils/fishUtils';
+import type { ContainerRecord } from '../hooks/useContainerTracker';
 
 /** Returns a CSS backgroundImage value that overlays the given pattern on a solid colour swatch. */
 function patternToCSS(pattern: FishPattern): string {
@@ -26,9 +27,10 @@ interface MetricsPanelProps {
   loading: boolean;
   error: string | null;
   lastFetch: Date | null;
+  containers: ContainerRecord[];
 }
 
-export function MetricsPanel({ families, loading, error, lastFetch }: MetricsPanelProps) {
+export function MetricsPanel({ families, loading, error, lastFetch, containers }: MetricsPanelProps) {
   const fishList = deriveFishData(families);
 
   return (
@@ -47,6 +49,33 @@ export function MetricsPanel({ families, loading, error, lastFetch }: MetricsPan
         <div className="metrics-error">
           <strong>Error:</strong> {error}
         </div>
+      )}
+
+      {containers.length > 0 && (
+        <section className="container-status">
+          <h4 className="container-status__title">
+            Containers
+            <span className="container-status__summary">
+              {containers.filter((c) => c.isUp).length}/{containers.length}
+            </span>
+          </h4>
+          <ul className="container-list">
+            {containers.map((c) => (
+              <li key={c.id} className="container-item">
+                <span className={`container-dot container-dot--${c.isUp ? 'up' : 'down'}`} />
+                <span
+                  className="container-label"
+                  title={`Started: ${new Date(c.startTime * 1000).toISOString()}`}
+                >
+                  {formatAge(c.startTime)}
+                </span>
+                <span className={`fish-legend__status fish-legend__status--${c.isUp ? 'up' : 'down'}`}>
+                  {c.isUp ? 'UP' : 'DOWN'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {fishList.length > 0 && (
@@ -77,6 +106,42 @@ export function MetricsPanel({ families, loading, error, lastFetch }: MetricsPan
           </ul>
         </section>
       )}
+
+      <section className="visual-guide">
+        <h4 className="visual-guide__title">Visual Guide</h4>
+        <ul className="visual-guide__list">
+          <li className="visual-guide__item">
+            <span className="visual-guide__icon">🐟</span>
+            <div className="visual-guide__text">
+              <strong>Fish speed</strong>
+              <span>
+                Driven by <code>graphql_query_counter</code>. Queries with more traffic swim faster
+                (0.5× – 2.5× base speed).
+              </span>
+            </div>
+          </li>
+          <li className="visual-guide__item">
+            <span className="visual-guide__icon">👁</span>
+            <div className="visual-guide__text">
+              <strong>Fish opacity</strong>
+              <span>
+                Full opacity = service is <strong className="status-up">UP</strong>. Faded (35%) = service is{' '}
+                <strong className="status-down">DOWN</strong> (<code>up</code> metric = 0).
+              </span>
+            </div>
+          </li>
+          <li className="visual-guide__item">
+            <span className="visual-guide__icon">🪸</span>
+            <div className="visual-guide__text">
+              <strong>Coral colour</strong>
+              <span>
+                Corals are tinted orange-red by average HTTP latency (
+                <code>http_request_duration_seconds</code>). Fully tinted at ≥ 2 s.
+              </span>
+            </div>
+          </li>
+        </ul>
+      </section>
 
       {families.length === 0 && !loading && !error && (
         <p className="metrics-empty">No metrics yet. Configure an endpoint above.</p>
@@ -119,4 +184,13 @@ function formatValue(v: number): string {
   if (!isFinite(v)) return String(v);
   if (Number.isInteger(v)) return v.toString();
   return v.toPrecision(6).replace(/\.?0+$/, '');
+}
+
+/** Format the age of a container relative to now for compact display. */
+function formatAge(startTimeSec: number): string {
+  const ageSec = Math.floor(Date.now() / 1000) - startTimeSec;
+  if (ageSec < 60) return `${ageSec}s ago`;
+  if (ageSec < 3600) return `${Math.floor(ageSec / 60)}m ago`;
+  if (ageSec < 86400) return `${Math.floor(ageSec / 3600)}h ago`;
+  return `${Math.floor(ageSec / 86400)}d ago`;
 }
