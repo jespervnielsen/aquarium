@@ -74,10 +74,12 @@ function App() {
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: 520 });
   useEffect(() => {
     function measure() {
-      const panel = 280;
-      const padding = 40;
-      const w = Math.max(400, window.innerWidth - panel - padding);
-      const h = Math.max(300, Math.round(w * 0.58));
+      const sidebarW = 280;
+      const hPadding = 48; // 16px container padding × 2 + 16px gap
+      const vPadding = 120; // header + top/bottom padding
+      const w = Math.max(400, window.innerWidth - sidebarW - hPadding);
+      const maxH = window.innerHeight - vPadding;
+      const h = Math.max(300, Math.min(maxH, Math.round(w * 0.65)));
       setCanvasSize({ width: w, height: h });
     }
     measure();
