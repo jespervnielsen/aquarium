@@ -19,9 +19,27 @@ export function colorToCSS(color: number): string {
   return '#' + color.toString(16).padStart(6, '0');
 }
 
+/** Visual patterns that can be drawn on a fish body. */
+export const FISH_PATTERNS = ['plain', 'stripes', 'spots', 'patch', 'bands'] as const;
+export type FishPattern = (typeof FISH_PATTERNS)[number];
+
+/**
+ * Deterministically pick a pattern for the given label.
+ * Uses a different multiplier than {@link hashColor} so pattern and color
+ * vary independently, maximising visual distinctiveness between fish.
+ */
+export function hashPattern(str: string): FishPattern {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 37 + str.charCodeAt(i)) | 0;
+  }
+  return FISH_PATTERNS[Math.abs(hash) % FISH_PATTERNS.length];
+}
+
 export interface FishInfo {
   label: string;
   color: number;
+  pattern: FishPattern;
   isUp: boolean;
   value: number | null;
   speedScale: number;
@@ -36,7 +54,7 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
     for (const sample of upFamily.samples) {
       const label = sample.labels.job ?? sample.labels.instance ?? 'service';
       const isUp = sample.value === 1;
-      result.push({ label, color: hashColor(label), isUp, value: sample.value, speedScale: 1.0 });
+      result.push({ label, color: hashColor(label), pattern: hashPattern(label), isUp, value: sample.value, speedScale: 1.0 });
     }
     return result.slice(0, MAX_FISH);
   }
@@ -55,7 +73,7 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
       const logCount = Math.log(sample.value + 1);
       // Scale from 0.5 (rare query) to 2.5 (most-used query)
       const speedScale = 0.5 + (logMax > 0 ? logCount / logMax : 0) * 2.0;
-      result.push({ label: queryName, color: hashColor(queryName), isUp: true, value: sample.value, speedScale });
+      result.push({ label: queryName, color: hashColor(queryName), pattern: hashPattern(queryName), isUp: true, value: sample.value, speedScale });
     }
     if (result.length > 0) return result.slice(0, MAX_FISH);
   }
@@ -66,7 +84,7 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
     if (!seen.has(family.name)) {
       seen.add(family.name);
       const firstValue = family.samples.length > 0 ? family.samples[0].value : null;
-      result.push({ label: family.name, color: hashColor(family.name), isUp: true, value: firstValue, speedScale: 1.0 });
+      result.push({ label: family.name, color: hashColor(family.name), pattern: hashPattern(family.name), isUp: true, value: firstValue, speedScale: 1.0 });
     }
     if (result.length >= MAX_FISH) break;
   }
