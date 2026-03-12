@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export const TEST_ENDPOINT_URL = '/dev/metrics';
+export const TEST_ENDPOINT_URL = `${import.meta.env.BASE_URL}dev/metrics`;
 
 interface MetricsConfigProps {
   url: string;
