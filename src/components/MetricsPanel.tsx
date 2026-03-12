@@ -86,6 +86,42 @@ export function MetricsPanel({ families, loading, error, lastFetch, containers }
         </section>
       )}
 
+      <section className="visual-guide">
+        <h4 className="visual-guide__title">Visual Guide</h4>
+        <ul className="visual-guide__list">
+          <li className="visual-guide__item">
+            <span className="visual-guide__icon">🐟</span>
+            <div className="visual-guide__text">
+              <strong>Fish speed</strong>
+              <span>
+                Driven by <code>graphql_query_counter</code>. Queries with more traffic swim faster
+                (0.5× – 2.5× base speed).
+              </span>
+            </div>
+          </li>
+          <li className="visual-guide__item">
+            <span className="visual-guide__icon">👁</span>
+            <div className="visual-guide__text">
+              <strong>Fish opacity</strong>
+              <span>
+                Full opacity = service is <strong className="status-up">UP</strong>. Faded (35%) = service is{' '}
+                <strong className="status-down">DOWN</strong> (<code>up</code> metric = 0).
+              </span>
+            </div>
+          </li>
+          <li className="visual-guide__item">
+            <span className="visual-guide__icon">🪸</span>
+            <div className="visual-guide__text">
+              <strong>Coral colour</strong>
+              <span>
+                Corals are tinted orange-red by average HTTP latency (
+                <code>http_request_duration_seconds</code>). Fully tinted at ≥ 2 s.
+              </span>
+            </div>
+          </li>
+        </ul>
+      </section>
+
       {families.length === 0 && !loading && !error && (
         <p className="metrics-empty">No metrics yet. Configure an endpoint above.</p>
       )}
