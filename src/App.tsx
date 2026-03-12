@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AquariumCanvas } from './components/AquariumCanvas';
 import { MetricsConfig, TEST_ENDPOINT_URL } from './components/MetricsConfig';
 import { MetricsPanel } from './components/MetricsPanel';
 import { TestMetricsControls, type TestScenarios } from './components/TestMetricsControls';
 import { usePrometheusMetrics } from './hooks/usePrometheusMetrics';
+import { useTestMetrics } from './hooks/useTestMetrics';
 import './App.css';
 
 const STORAGE_KEY_URL = 'aquarium:metricsUrl';
@@ -42,21 +43,18 @@ function App() {
 
   const isTestMode = metricsUrl === TEST_ENDPOINT_URL;
 
-  const effectiveUrl = useMemo(() => {
-    if (!isTestMode) return metricsUrl;
-    const params = new URLSearchParams();
-    if (testScenarios.trafficSpike) params.set('trafficSpike', '1');
-    if (testScenarios.breakingNewsSpike) params.set('breakingNewsSpike', '1');
-    if (testScenarios.dependencySlowdown) params.set('dependencySlowdown', '1');
-    if (testScenarios.errorSpike) params.set('errorSpike', '1');
-    const qs = params.toString();
-    return qs ? `${TEST_ENDPOINT_URL}?${qs}` : TEST_ENDPOINT_URL;
-  }, [isTestMode, metricsUrl, testScenarios]);
+  // In test mode the simulator runs entirely in the browser so that scenario
+  // toggles work on static hosts (e.g. GitHub Pages) where the dev-server
+  // middleware that handles query-parameter flags is absent.
+  const testMetricsState = useTestMetrics(testScenarios, pollInterval * 1000, isTestMode);
 
-  const { families, loading, error, lastFetch } = usePrometheusMetrics(
-    effectiveUrl,
+  // When in test mode pass an empty string so usePrometheusMetrics stays idle.
+  const liveMetricsState = usePrometheusMetrics(
+    isTestMode ? '' : metricsUrl,
     pollInterval * 1000
   );
+
+  const { families, loading, error, lastFetch } = isTestMode ? testMetricsState : liveMetricsState;
 
   const handleSave = useCallback((url: string, interval: number) => {
     setMetricsUrl(url);
@@ -102,6 +100,7 @@ function App() {
             families={families}
             width={canvasSize.width}
             height={canvasSize.height}
+            speedMultiplier={isTestMode && testScenarios.trafficSpike ? 3.0 : 1.0}
           />
           {!metricsUrl && (
             <div className="canvas-overlay">

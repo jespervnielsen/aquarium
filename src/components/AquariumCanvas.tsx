@@ -34,6 +34,8 @@ interface AquariumCanvasProps {
   families: MetricFamily[];
   width?: number;
   height?: number;
+  /** Global speed multiplier applied to all fish (e.g. 3.0 during a traffic spike). */
+  speedMultiplier?: number;
 }
 
 const WATER_COLOR = 0x0a1628;
@@ -238,7 +240,7 @@ function createFish(
   return fish;
 }
 
-function updateFish(fish: FishData, width: number, height: number): void {
+function updateFish(fish: FishData, width: number, height: number, speedMultiplier: number = 1.0): void {
   fish.wobble += fish.wobbleSpeed;
   const wobbleY = Math.sin(fish.wobble) * 0.5;
 
@@ -271,7 +273,7 @@ function updateFish(fish: FishData, width: number, height: number): void {
   fish.vy += (Math.random() - 0.5) * 0.02;
 
   // Clamp speed
-  const maxSpeed = fish.speedScale * 3.0;
+  const maxSpeed = fish.speedScale * 3.0 * speedMultiplier;
   const speed = Math.sqrt(fish.vx * fish.vx + fish.vy * fish.vy);
   if (speed > maxSpeed) {
     fish.vx = (fish.vx / speed) * maxSpeed;
@@ -368,13 +370,15 @@ function drawSurface(surf: Graphics, tick: number, width: number): void {
   surf.fill({ color: 0x1a8ccc, alpha: 0.25 });
 }
 
-export function AquariumCanvas({ families, width = 900, height = 600 }: AquariumCanvasProps) {
+export function AquariumCanvas({ families, width = 900, height = 600, speedMultiplier = 1.0 }: AquariumCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const fishRef = useRef<Map<string, FishData>>(new Map());
   const bubblesRef = useRef<BubbleData[]>([]);
   const tickRef = useRef(0);
   const coralGfxRef = useRef<Graphics | null>(null);
+  const speedMultiplierRef = useRef<number>(speedMultiplier);
+  speedMultiplierRef.current = speedMultiplier;
 
   // Initialise PixiJS once
   useEffect(() => {
@@ -459,7 +463,7 @@ export function AquariumCanvas({ families, width = 900, height = 600 }: Aquarium
 
         // Update fish
         for (const fish of fishRef.current.values()) {
-          updateFish(fish, w, h);
+          updateFish(fish, w, h, speedMultiplierRef.current);
         }
 
         // Update bubbles
