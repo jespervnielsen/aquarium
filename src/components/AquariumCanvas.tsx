@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Application, Graphics, Container, Ticker } from 'pixi.js';
 import type { MetricFamily } from '../utils/prometheusParser';
 import { deriveFishData, hashColor } from '../utils/fishUtils';
+import type { ContainerRecord } from '../hooks/useContainerTracker';
 
 interface FishData {
   container: Container;
@@ -36,6 +37,8 @@ interface AquariumCanvasProps {
   height?: number;
   /** Global speed multiplier applied to all fish (e.g. 3.0 during a traffic spike). */
   speedMultiplier?: number;
+  /** Tracked container instances to display as status indicators. */
+  containers?: ContainerRecord[];
 }
 
 const WATER_COLOR = 0x0a1628;
@@ -370,13 +373,14 @@ function drawSurface(surf: Graphics, tick: number, width: number): void {
   surf.fill({ color: 0x1a8ccc, alpha: 0.25 });
 }
 
-export function AquariumCanvas({ families, width = 900, height = 600, speedMultiplier = 1.0 }: AquariumCanvasProps) {
+export function AquariumCanvas({ families, width = 900, height = 600, speedMultiplier = 1.0, containers = [] }: AquariumCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const fishRef = useRef<Map<string, FishData>>(new Map());
   const bubblesRef = useRef<BubbleData[]>([]);
   const tickRef = useRef(0);
   const coralGfxRef = useRef<Graphics | null>(null);
+  const containerGfxRef = useRef<Graphics | null>(null);
   const speedMultiplierRef = useRef<number>(speedMultiplier);
   speedMultiplierRef.current = speedMultiplier;
 
@@ -420,6 +424,10 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
       seabedLayer.addChild(coralGfx);
       coralGfxRef.current = coralGfx;
 
+      // Overlay for container status indicators (drawn above everything else)
+      const containerGfx = new Graphics();
+      containerGfxRef.current = containerGfx;
+
       const weedLayer = new Container();
       const seaweed = new Graphics();
       weedLayer.addChild(seaweed);
@@ -434,6 +442,9 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
       const surface = new Graphics();
       surfaceLayer.addChild(surface);
       app.stage.addChild(surfaceLayer);
+
+      // Container indicators sit above the surface layer
+      app.stage.addChild(containerGfx);
 
       // Initial draw
       drawBackground(bg, app.canvas.width, app.canvas.height);
@@ -491,6 +502,7 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
     return () => {
       destroyed = true;
       coralGfxRef.current = null;
+      containerGfxRef.current = null;
       if (appRef.current) {
         appRef.current.destroy(true);
         appRef.current = null;
@@ -554,6 +566,31 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
       drawCoralAt(coralGfx, type, color, x, h - 40, avgLatency);
     });
   }, [families]);
+
+  // Draw container status indicators as small dots in the top-left corner
+  useEffect(() => {
+    const containerGfx = containerGfxRef.current;
+    if (!containerGfx) return;
+
+    containerGfx.clear();
+    if (containers.length === 0) return;
+
+    const dotR = 5;
+    const gap = 3;
+    const startX = 10;
+    const startY = 10;
+
+    containers.forEach((c, i) => {
+      const cx = startX + i * (dotR * 2 + gap) + dotR;
+      const cy = startY + dotR;
+      containerGfx.circle(cx, cy, dotR);
+      if (c.isUp) {
+        containerGfx.fill({ color: 0x44cc88, alpha: 0.9 });
+      } else {
+        containerGfx.fill({ color: 0x555555, alpha: 0.5 });
+      }
+    });
+  }, [containers]);
 
   return (
     <div

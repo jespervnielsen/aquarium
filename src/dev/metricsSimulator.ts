@@ -155,6 +155,8 @@ interface HistogramCounter {
 }
 
 interface ContainerState {
+  /** Unix epoch seconds when this simulated container process started. */
+  processStartTime: number
   /** http_request_duration_seconds histograms keyed by component name. */
   httpDuration: Record<string, HistogramCounter>
   /** graphql_request_duration_seconds histograms keyed by operationName. */
@@ -258,7 +260,10 @@ function createContainer(): ContainerState {
     queryCounters[name] = Math.max(1, Math.round(randInt(1, 20_000) * QUERY_DIST[name]))
   }
 
-  return { httpDuration, gqlDuration, cacheHits, cacheMisses, queryCounters, errorCounter: 0 }
+  // Assign a unique process start time: a random moment between 1 minute and 30 days ago.
+  const processStartTime = Math.floor(Date.now() / 1000) - randInt(60, 86_400 * 30)
+
+  return { processStartTime, httpDuration, gqlDuration, cacheHits, cacheMisses, queryCounters, errorCounter: 0 }
 }
 
 function initState(): SimulatorState {
@@ -462,6 +467,12 @@ export function generateMetricsText(options?: SimulatorOptions): string {
   lines.push('# HELP graphql_request_error_total Total number of GraphQL request errors')
   lines.push('# TYPE graphql_request_error_total counter')
   lines.push(`graphql_request_error_total ${container.errorCounter}`)
+
+  // ── process_start_time_seconds ────────────────────────────────────────────
+  lines.push('')
+  lines.push('# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.')
+  lines.push('# TYPE process_start_time_seconds gauge')
+  lines.push(`process_start_time_seconds ${container.processStartTime}`)
 
   return lines.join('\n') + '\n'
 }

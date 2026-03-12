@@ -96,5 +96,13 @@ describe('useTestMetrics integration (simulator → parser)', () => {
       }
     }
   })
+
+  it('parsed families include process_start_time_seconds for container tracking', () => {
+    const families = parsePrometheusText(generateMetricsText(defaultScenarios))
+    const startTimeFamily = families.find((f) => f.name === 'process_start_time_seconds')
+    expect(startTimeFamily).toBeDefined()
+    expect(startTimeFamily!.samples).toHaveLength(1)
+    expect(startTimeFamily!.samples[0].value).toBeGreaterThan(0)
+  })
 })
 
