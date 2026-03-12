@@ -15,6 +15,7 @@ describe('generateMetricsText', () => {
       'graphql_request_duration_seconds',
       'graphql_query_type_cache_counter',
       'graphql_query_counter',
+      'graphql_request_error_total',
     ]
     for (const fam of families) {
       expect(text, `missing HELP for ${fam}`).toContain(`# HELP ${fam} `)
@@ -83,6 +84,11 @@ describe('generateMetricsText', () => {
     }
   })
 
+  it('includes graphql_request_error_total counter', () => {
+    const text = generateMetricsText()
+    expect(text).toContain('graphql_request_error_total ')
+  })
+
   it('produces valid Prometheus data lines (metric[{labels}] value)', () => {
     const text = generateMetricsText()
     // Only check non-comment, non-blank lines.
@@ -114,6 +120,31 @@ describe('generateMetricsText', () => {
     }
     checkText(generateMetricsText())
     checkText(generateMetricsText())
+  })
+
+  it('accepts SimulatorOptions and forces the specified events', () => {
+    // Verify that passing options does not throw and produces valid output.
+    const text = generateMetricsText({
+      trafficSpike: true,
+      breakingNewsSpike: true,
+      dependencySlowdown: true,
+      errorSpike: true,
+    })
+
+    expect(text.length).toBeGreaterThan(0)
+    expect(text.endsWith('\n')).toBe(true)
+
+    // The error counter must be present with a numeric value.
+    expect(text).toMatch(/^graphql_request_error_total \d+/m)
+
+    // All data lines must still be valid Prometheus format.
+    const dataLines = text.split('\n').filter(
+      (line) => line.trim().length > 0 && !line.startsWith('#'),
+    )
+    const metricLine = /^[\w_:]+(\{[^}]+\})? [-+]?\d+(\.\d+)?([eE][+-]?\d+)?$/
+    for (const line of dataLines) {
+      expect(line, `unexpected line format: "${line}"`).toMatch(metricLine)
+    }
   })
 })
 

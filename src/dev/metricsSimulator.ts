@@ -8,9 +8,20 @@
  * Call `generateMetricsText()` on each request; the module maintains internal
  * state so counters increase realistically over time.
  *
- * Simulation events (traffic spike, breaking-news spike, dependency slowdown)
- * fire randomly every few minutes to make the aquarium visually interesting.
+ * Simulation events (traffic spike, breaking-news spike, dependency slowdown,
+ * error spike) fire randomly every few minutes to make the aquarium visually
+ * interesting.  They can also be forced via the `options` argument, which is
+ * used by the Vite dev-server middleware to honour query-parameter controls
+ * from the TestMetricsControls UI.
  */
+
+/** Options for forcing specific simulation events on the next poll. */
+export interface SimulatorOptions {
+  trafficSpike?: boolean
+  breakingNewsSpike?: boolean
+  dependencySlowdown?: boolean
+  errorSpike?: boolean
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -154,6 +165,8 @@ interface ContainerState {
   cacheMisses: Record<string, number>
   /** graphql_query_counter values keyed by queryName. */
   queryCounters: Record<string, number>
+  /** graphql_request_error_total cumulative counter. */
+  errorCounter: number
 }
 
 interface ActiveEvent {
@@ -166,6 +179,7 @@ interface SimulatorState {
   trafficSpike: ActiveEvent
   breakingNewsSpike: ActiveEvent
   dependencySlowdown: ActiveEvent
+  errorSpike: ActiveEvent
   lastEventCheck: number
 }
 
@@ -244,7 +258,7 @@ function createContainer(): ContainerState {
     queryCounters[name] = Math.max(1, Math.round(randInt(1, 20_000) * QUERY_DIST[name]))
   }
 
-  return { httpDuration, gqlDuration, cacheHits, cacheMisses, queryCounters }
+  return { httpDuration, gqlDuration, cacheHits, cacheMisses, queryCounters, errorCounter: 0 }
 }
 
 function initState(): SimulatorState {
@@ -259,6 +273,7 @@ function initState(): SimulatorState {
     trafficSpike: { ...inactive },
     breakingNewsSpike: { ...inactive },
     dependencySlowdown: { ...inactive },
+    errorSpike: { ...inactive },
     lastEventCheck: Date.now(),
   }
 }
@@ -267,7 +282,7 @@ const state: SimulatorState = initState()
 
 // ─── simulation event logic ────────────────────────────────────────────────────
 
-function maybeFireEvents(now: number): void {
+function maybeFireEvents(now: number, forced?: SimulatorOptions): void {
   const elapsed = now - state.lastEventCheck
   state.lastEventCheck = now
 
@@ -281,6 +296,24 @@ function maybeFireEvents(now: number): void {
   if (state.dependencySlowdown.active && now > state.dependencySlowdown.endsAt) {
     state.dependencySlowdown.active = false
   }
+  if (state.errorSpike.active && now > state.errorSpike.endsAt) {
+    state.errorSpike.active = false
+  }
+
+  // Forced events stay active for the duration of the next poll window.
+  const forcedDuration = 60_000
+  if (forced?.trafficSpike) {
+    state.trafficSpike = { active: true, endsAt: now + forcedDuration }
+  }
+  if (forced?.breakingNewsSpike) {
+    state.breakingNewsSpike = { active: true, endsAt: now + forcedDuration }
+  }
+  if (forced?.dependencySlowdown) {
+    state.dependencySlowdown = { active: true, endsAt: now + forcedDuration }
+  }
+  if (forced?.errorSpike) {
+    state.errorSpike = { active: true, endsAt: now + forcedDuration }
+  }
 
   // Randomly start new events (~one per event type per 3 minutes on average).
   const prob = elapsed / (3 * 60 * 1_000)
@@ -292,6 +325,9 @@ function maybeFireEvents(now: number): void {
   }
   if (!state.dependencySlowdown.active && Math.random() < prob) {
     state.dependencySlowdown = { active: true, endsAt: now + 15_000 }
+  }
+  if (!state.errorSpike.active && Math.random() < prob) {
+    state.errorSpike = { active: true, endsAt: now + 15_000 }
   }
 }
 
@@ -338,6 +374,10 @@ function updateContainer(container: ContainerState): void {
       Math.round(newRequests * QUERY_DIST[name] * breakingMult),
     )
   }
+
+  // Error counter — low normally, elevated during error spike.
+  const errorIncrement = state.errorSpike.active ? randInt(5, 20) : randInt(0, 1)
+  container.errorCounter += errorIncrement
 }
 
 // ─── Prometheus text generation ───────────────────────────────────────────────
@@ -346,10 +386,14 @@ function updateContainer(container: ContainerState): void {
  * Returns a Prometheus exposition text string for one randomly chosen
  * simulated container.  Internal state is updated on every call so
  * counters grow over time, matching the format of docs/example-metrics.txt.
+ *
+ * @param options - Optional scenario overrides.  When a field is `true` the
+ *   corresponding event is forced active for the next poll window, regardless
+ *   of the normal random-fire logic.
  */
-export function generateMetricsText(): string {
+export function generateMetricsText(options?: SimulatorOptions): string {
   const now = Date.now()
-  maybeFireEvents(now)
+  maybeFireEvents(now, options)
 
   // Mimic a load balancer: pick a random container for this request.
   const container =
@@ -412,6 +456,12 @@ export function generateMetricsText(): string {
   for (const name of QUERY_NAMES) {
     lines.push(`graphql_query_counter{queryName="${name}"} ${container.queryCounters[name]}`)
   }
+
+  // ── graphql_request_error_total ───────────────────────────────────────────
+  lines.push('')
+  lines.push('# HELP graphql_request_error_total Total number of GraphQL request errors')
+  lines.push('# TYPE graphql_request_error_total counter')
+  lines.push(`graphql_request_error_total ${container.errorCounter}`)
 
   return lines.join('\n') + '\n'
 }

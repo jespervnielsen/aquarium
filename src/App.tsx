@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AquariumCanvas } from './components/AquariumCanvas';
-import { MetricsConfig } from './components/MetricsConfig';
+import { MetricsConfig, TEST_ENDPOINT_URL } from './components/MetricsConfig';
 import { MetricsPanel } from './components/MetricsPanel';
+import { TestMetricsControls, type TestScenarios } from './components/TestMetricsControls';
 import { usePrometheusMetrics } from './hooks/usePrometheusMetrics';
 import './App.css';
 
@@ -25,14 +26,35 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
+const DEFAULT_TEST_SCENARIOS: TestScenarios = {
+  trafficSpike: false,
+  breakingNewsSpike: false,
+  dependencySlowdown: false,
+  errorSpike: false,
+};
+
 function App() {
   const [metricsUrl, setMetricsUrl] = useState(() => readStorage(STORAGE_KEY_URL, ''));
   const [pollInterval, setPollInterval] = useState(() =>
     Number(readStorage(STORAGE_KEY_INTERVAL, String(DEFAULT_INTERVAL)))
   );
+  const [testScenarios, setTestScenarios] = useState<TestScenarios>(DEFAULT_TEST_SCENARIOS);
+
+  const isTestMode = metricsUrl === TEST_ENDPOINT_URL;
+
+  const effectiveUrl = useMemo(() => {
+    if (!isTestMode) return metricsUrl;
+    const params = new URLSearchParams();
+    if (testScenarios.trafficSpike) params.set('trafficSpike', '1');
+    if (testScenarios.breakingNewsSpike) params.set('breakingNewsSpike', '1');
+    if (testScenarios.dependencySlowdown) params.set('dependencySlowdown', '1');
+    if (testScenarios.errorSpike) params.set('errorSpike', '1');
+    const qs = params.toString();
+    return qs ? `${TEST_ENDPOINT_URL}?${qs}` : TEST_ENDPOINT_URL;
+  }, [isTestMode, metricsUrl, testScenarios]);
 
   const { families, loading, error, lastFetch } = usePrometheusMetrics(
-    metricsUrl,
+    effectiveUrl,
     pollInterval * 1000
   );
 
@@ -41,6 +63,10 @@ function App() {
     setPollInterval(interval);
     writeStorage(STORAGE_KEY_URL, url);
     writeStorage(STORAGE_KEY_INTERVAL, String(interval));
+    // Reset test scenarios when switching endpoints
+    if (url !== TEST_ENDPOINT_URL) {
+      setTestScenarios(DEFAULT_TEST_SCENARIOS);
+    }
   }, []);
 
   // Window dimensions for responsive canvas
@@ -65,6 +91,9 @@ function App() {
         <h1 className="app-title">Aquarium</h1>
         <p className="app-subtitle">Prometheus metrics visualisation</p>
         <MetricsConfig url={metricsUrl} interval={pollInterval} onSave={handleSave} />
+        {isTestMode && (
+          <TestMetricsControls scenarios={testScenarios} onChange={setTestScenarios} />
+        )}
       </header>
 
       <main className="app-main">
