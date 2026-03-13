@@ -18,7 +18,8 @@ export function useErrorTracker(families: MetricFamily[]): boolean {
 
   useEffect(() => {
     const errorFamily = families.find((f) => f.name === 'graphql_request_error_total')
-    const currentTotal = errorFamily?.samples[0]?.value ?? 0
+    // Sum across all samples to handle multiple container instances
+    const currentTotal = errorFamily?.samples.reduce((sum, s) => sum + s.value, 0) ?? 0
 
     function activate() {
       setHasErrors(true)

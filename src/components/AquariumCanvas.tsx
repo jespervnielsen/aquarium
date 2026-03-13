@@ -636,6 +636,8 @@ export function AquariumCanvas({
   const coralGfxRef = useRef<Graphics | null>(null);
   const castleGfxRef = useRef<Graphics | null>(null);
   const containerGfxRef = useRef<Graphics | null>(null);
+  const fishLayerRef = useRef<Container | null>(null);
+  const lastMinuteRef = useRef(-1);
   const speedMultiplierRef = useRef<number>(speedMultiplier);
   speedMultiplierRef.current = speedMultiplier;
 
@@ -644,7 +646,6 @@ export function AquariumCanvas({
     let destroyed = false;
     const app = new Application();
     const fishMap = fishRef.current;
-    const lastMinute = { value: -1 };
 
     (async () => {
       await app.init({
@@ -679,6 +680,7 @@ export function AquariumCanvas({
 
       // 3. Fish + bubbles layer (behind seabed structures)
       const fishLayer = new Container();
+      fishLayerRef.current = fishLayer;
       app.stage.addChild(fishLayer);
 
       // 4. Seabed: sand floor + rocks + sandcastles + corals
@@ -728,9 +730,6 @@ export function AquariumCanvas({
         fishLayer.addChild(b.gfx);
       }
 
-      // Expose fishLayer so metrics effect can add fish to it
-      (app as unknown as { fishLayer: Container }).fishLayer = fishLayer;
-
       app.ticker.add((ticker: Ticker) => {
         if (destroyed) return;
         tickRef.current += ticker.deltaTime;
@@ -741,8 +740,8 @@ export function AquariumCanvas({
 
         // Redraw background once per minute (time-of-day colours change slowly)
         const currentMinute = tickNow.getMinutes();
-        if (currentMinute !== lastMinute.value) {
-          lastMinute.value = currentMinute;
+        if (currentMinute !== lastMinuteRef.current) {
+          lastMinuteRef.current = currentMinute;
           drawBackground(bg, w, h, tickNow);
         }
 
@@ -784,6 +783,7 @@ export function AquariumCanvas({
       coralGfxRef.current = null;
       castleGfxRef.current = null;
       containerGfxRef.current = null;
+      fishLayerRef.current = null;
       if (appRef.current) {
         appRef.current.destroy(true);
         appRef.current = null;
@@ -797,9 +797,8 @@ export function AquariumCanvas({
   // Sync fish with metrics
   useEffect(() => {
     const app = appRef.current;
-    if (!app) return;
-    const fishLayer = (app as unknown as { fishLayer?: Container }).fishLayer;
-    if (!fishLayer) return;
+    const fishLayer = fishLayerRef.current;
+    if (!app || !fishLayer) return;
 
     const desired = deriveFishData(families);
     const desiredKeys = new Set(desired.map((d) => d.label));
@@ -897,9 +896,8 @@ export function AquariumCanvas({
   // Add or remove the predator shark based on the hasErrors flag
   useEffect(() => {
     const app = appRef.current;
-    if (!app) return;
-    const fishLayer = (app as unknown as { fishLayer?: Container }).fishLayer;
-    if (!fishLayer) return;
+    const fishLayer = fishLayerRef.current;
+    if (!app || !fishLayer) return;
 
     if (hasErrors) {
       if (!fishRef.current.has(PREDATOR_KEY)) {
