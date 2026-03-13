@@ -46,6 +46,8 @@ interface AquariumCanvasProps {
   containers?: ContainerRecord[];
   /** When true a predator fish appears to represent active errors. */
   hasErrors?: boolean;
+  /** Labels of fish/corals to hide from the canvas. */
+  hiddenLabels?: Set<string>;
 }
 
 const WATER_COLOR = 0x0a1628;
@@ -627,6 +629,7 @@ export function AquariumCanvas({
   speedMultiplier = 1.0,
   containers = [],
   hasErrors = false,
+  hiddenLabels,
 }: AquariumCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
@@ -640,6 +643,8 @@ export function AquariumCanvas({
   const lastMinuteRef = useRef(-1);
   const speedMultiplierRef = useRef<number>(speedMultiplier);
   speedMultiplierRef.current = speedMultiplier;
+  const hiddenLabelsRef = useRef<Set<string> | undefined>(hiddenLabels);
+  hiddenLabelsRef.current = hiddenLabels;
 
   // Initialise PixiJS once
   useEffect(() => {
@@ -815,38 +820,49 @@ export function AquariumCanvas({
       }
     }
 
-    // Add new fish
+    // Add new fish or update existing ones
     for (const { label, color, pattern, isUp, speedScale } of desired) {
+      const hidden = hiddenLabelsRef.current?.has(label) ?? false;
       if (!fishRef.current.has(label)) {
         const fish = createFish(app, fishLayer, color, pattern, label, speedScale);
-        if (!isUp) {
-          fish.container.alpha = 0.35;
-        }
+        fish.container.alpha = isUp ? 1.0 : 0.35;
+        fish.container.visible = !hidden;
         fishRef.current.set(label, fish);
       } else {
-        // Update alive/dead state
+        // Update alive/dead state and visibility
         const fish = fishRef.current.get(label)!;
         fish.container.alpha = isUp ? 1.0 : 0.35;
+        fish.container.visible = !hidden;
       }
     }
   }, [families]);
 
-  // Sync corals with metrics
+  // Sync fish visibility when hiddenLabels changes
+  useEffect(() => {
+    for (const [label, fish] of fishRef.current) {
+      if (label === PREDATOR_KEY) continue;
+      fish.container.visible = !(hiddenLabels?.has(label) ?? false);
+    }
+  }, [hiddenLabels]);
+
+  // Sync corals with metrics or visibility changes
   useEffect(() => {
     const app = appRef.current;
     const coralGfx = coralGfxRef.current;
     if (!app || !coralGfx) return;
 
-    const corals = deriveCoralData(families);
+    const allCorals = deriveCoralData(families);
+    const visibleCorals = allCorals.filter((c) => !(hiddenLabels?.has(c.name) ?? false));
     const w = app.canvas.width;
     const h = app.canvas.height;
 
     coralGfx.clear();
-    corals.forEach(({ type, color, avgLatency }, i) => {
-      const x = ((i + 0.5) / corals.length) * w;
+    visibleCorals.forEach(({ name, type, color, avgLatency }) => {
+      const idx = allCorals.findIndex((c) => c.name === name);
+      const x = ((idx + 0.5) / allCorals.length) * w;
       drawCoralAt(coralGfx, type, color, x, h - 40, avgLatency);
     });
-  }, [families]);
+  }, [families, hiddenLabels]);
 
   // Draw sandcastles on the seabed — one per tracked container instance
   useEffect(() => {

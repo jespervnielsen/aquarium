@@ -654,3 +654,47 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* ── Legend checkboxes and toggle-all ───────────────────────── */
+.legend-checkbox {
+  accent-color: #64b4ff;
+  cursor: pointer;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.fish-legend__title,
+.coral-legend__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.legend-toggle-all {
+  background: none;
+  border: none;
+  color: rgba(255 255 255 / 0.4);
+  font-size: 0.65rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-family: inherit;
+  letter-spacing: 0.03em;
+}
+
+.legend-toggle-all:hover {
+  color: #87ceeb;
+}
+
+.fish-legend__item--hidden .fish-legend__label,
+.fish-legend__item--hidden .fish-legend__status,
+.fish-legend__item--hidden .fish-legend__value,
+.fish-legend__item--hidden .fish-legend__swatch,
+.coral-legend__item--hidden .coral-legend__label,
+.coral-legend__item--hidden .coral-legend__latency,
+.coral-legend__item--hidden .coral-legend__swatch,
+.coral-legend__item--hidden .coral-legend__type {
+  opacity: 0.35;
+}

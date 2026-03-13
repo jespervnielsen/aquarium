@@ -42,6 +42,7 @@ function App() {
     Number(readStorage(STORAGE_KEY_INTERVAL, String(DEFAULT_INTERVAL)))
   );
   const [testScenarios, setTestScenarios] = useState<TestScenarios>(DEFAULT_TEST_SCENARIOS);
+  const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
 
   const isTestMode = metricsUrl === TEST_ENDPOINT_URL;
 
@@ -70,6 +71,24 @@ function App() {
     if (url !== TEST_ENDPOINT_URL) {
       setTestScenarios(DEFAULT_TEST_SCENARIOS);
     }
+  }, []);
+
+  const handleToggleItem = useCallback((label: string) => {
+    setHiddenItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAll = useCallback((labels: string[], hide: boolean) => {
+    setHiddenItems((prev) => {
+      const next = new Set(prev);
+      if (hide) labels.forEach((l) => next.add(l));
+      else labels.forEach((l) => next.delete(l));
+      return next;
+    });
   }, []);
 
   // Window dimensions for responsive canvas
@@ -109,6 +128,7 @@ function App() {
             speedMultiplier={isTestMode && testScenarios.trafficSpike ? 3.0 : 1.0}
             containers={containers}
             hasErrors={hasErrors}
+            hiddenLabels={hiddenItems}
           />
           {!metricsUrl && (
             <div className="canvas-overlay">
@@ -124,6 +144,9 @@ function App() {
           lastFetch={lastFetch}
           containers={containers}
           hasErrors={hasErrors}
+          hiddenItems={hiddenItems}
+          onToggleItem={handleToggleItem}
+          onToggleAll={handleToggleAll}
         />
       </main>
     </div>

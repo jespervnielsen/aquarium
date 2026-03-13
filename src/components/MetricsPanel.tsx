@@ -41,11 +41,19 @@ interface MetricsPanelProps {
   lastFetch: Date | null;
   containers: ContainerRecord[];
   hasErrors: boolean;
+  hiddenItems: Set<string>;
+  onToggleItem: (label: string) => void;
+  onToggleAll: (labels: string[], hide: boolean) => void;
 }
 
-export function MetricsPanel({ families, loading, error, lastFetch, containers, hasErrors }: MetricsPanelProps) {
-  const fishList = deriveFishData(families);
-  const coralList = deriveCoralData(families);
+export function MetricsPanel({ families, loading, error, lastFetch, containers, hasErrors, hiddenItems, onToggleItem, onToggleAll }: MetricsPanelProps) {
+  const fishList = deriveFishData(families).slice().sort((a, b) => a.label.localeCompare(b.label));
+  const coralList = deriveCoralData(families).slice().sort((a, b) => a.name.localeCompare(b.name));
+
+  const fishLabels = fishList.map((f) => f.label);
+  const coralLabels = coralList.map((c) => c.name);
+  const allFishHidden = fishLabels.length > 0 && fishLabels.every((l) => hiddenItems.has(l));
+  const allCoralsHidden = coralLabels.length > 0 && coralLabels.every((l) => hiddenItems.has(l));
 
   return (
     <aside className="metrics-panel">
@@ -94,10 +102,26 @@ export function MetricsPanel({ families, loading, error, lastFetch, containers, 
 
       {fishList.length > 0 && (
         <section className="fish-legend">
-          <h4 className="fish-legend__title">Fish</h4>
+          <h4 className="fish-legend__title">
+            Fish
+            <button
+              className="legend-toggle-all"
+              onClick={() => onToggleAll(fishLabels, !allFishHidden)}
+              title={allFishHidden ? 'Show all fish' : 'Hide all fish'}
+            >
+              {allFishHidden ? 'Select all' : 'Deselect all'}
+            </button>
+          </h4>
           <ul className="fish-legend__list">
             {fishList.map((fish) => (
-              <li key={fish.label} className="fish-legend__item">
+              <li key={fish.label} className={`fish-legend__item${hiddenItems.has(fish.label) ? ' fish-legend__item--hidden' : ''}`}>
+                <input
+                  type="checkbox"
+                  className="legend-checkbox"
+                  checked={!hiddenItems.has(fish.label)}
+                  onChange={() => onToggleItem(fish.label)}
+                  title={hiddenItems.has(fish.label) ? `Show ${fish.label}` : `Hide ${fish.label}`}
+                />
                 <span
                   className="fish-legend__swatch"
                   style={{
@@ -123,7 +147,16 @@ export function MetricsPanel({ families, loading, error, lastFetch, containers, 
 
       {coralList.length > 0 && (
         <section className="coral-legend">
-          <h4 className="coral-legend__title">Corals</h4>
+          <h4 className="coral-legend__title">
+            Corals
+            <button
+              className="legend-toggle-all"
+              onClick={() => onToggleAll(coralLabels, !allCoralsHidden)}
+              title={allCoralsHidden ? 'Show all corals' : 'Hide all corals'}
+            >
+              {allCoralsHidden ? 'Select all' : 'Deselect all'}
+            </button>
+          </h4>
           <ul className="coral-legend__list">
             {coralList.map((coral) => {
               const latencyFactor = Math.min(coral.avgLatency / 2.0, 1.0);
@@ -135,7 +168,14 @@ export function MetricsPanel({ families, loading, error, lastFetch, containers, 
                   ? `rgb(${r}, ${g}, ${b})`
                   : colorToCSS(coral.color);
               return (
-                <li key={coral.name} className="coral-legend__item">
+                <li key={coral.name} className={`coral-legend__item${hiddenItems.has(coral.name) ? ' coral-legend__item--hidden' : ''}`}>
+                  <input
+                    type="checkbox"
+                    className="legend-checkbox"
+                    checked={!hiddenItems.has(coral.name)}
+                    onChange={() => onToggleItem(coral.name)}
+                    title={hiddenItems.has(coral.name) ? `Show ${coral.name}` : `Hide ${coral.name}`}
+                  />
                   <span
                     className="coral-legend__swatch"
                     style={{ backgroundColor: swatchColor }}
