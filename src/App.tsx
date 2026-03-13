@@ -78,10 +78,9 @@ function App() {
     function measure() {
       const sidebarW = 280;
       const hPadding = 48; // 16px container padding × 2 + 16px gap
-      const vPadding = 120; // header + top/bottom padding
+      const vPadding = 90; // header (~58px) + top/bottom padding (16px × 2)
       const w = Math.max(400, window.innerWidth - sidebarW - hPadding);
-      const maxH = window.innerHeight - vPadding;
-      const h = Math.max(300, Math.min(maxH, Math.round(w * 0.65)));
+      const h = Math.max(300, window.innerHeight - vPadding);
       setCanvasSize({ width: w, height: h });
     }
     measure();
