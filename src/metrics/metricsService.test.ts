@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { MetricsService } from './metricsService.ts'
+import { MetricsService, WARMUP_COUNT } from './metricsService.ts'
 
 const FIRST_POLL = `
 graphql_query_counter{queryName="breakingNews"} 1000
@@ -121,7 +121,7 @@ describe('MetricsService start/stop', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    const svc = new MetricsService('http://localhost:9090/metrics', 5000)
+    const svc = new MetricsService('http://localhost:9090/metrics', 5000, 0)
     const onUpdate = vi.fn()
     svc.onUpdate = onUpdate
 
@@ -141,7 +141,7 @@ describe('MetricsService start/stop', () => {
     const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'))
     vi.stubGlobal('fetch', mockFetch)
 
-    const svc = new MetricsService('http://localhost:9090/metrics', 5000)
+    const svc = new MetricsService('http://localhost:9090/metrics', 5000, 0)
     const onError = vi.fn()
     svc.onError = onError
 
@@ -160,7 +160,7 @@ describe('MetricsService start/stop', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    const svc = new MetricsService('http://localhost:9090/metrics', 5000)
+    const svc = new MetricsService('http://localhost:9090/metrics', 5000, 0)
     const onError = vi.fn()
     svc.onError = onError
 
@@ -178,7 +178,7 @@ describe('MetricsService start/stop', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    const svc = new MetricsService('http://localhost:9090/metrics', 5000)
+    const svc = new MetricsService('http://localhost:9090/metrics', 5000, 0)
     svc.start()
     svc.start() // second call should be a no-op
 
@@ -190,5 +190,95 @@ describe('MetricsService start/stop', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2)
 
     svc.stop()
+  })
+})
+
+describe('MetricsService warm-up', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('polls at 1-second intervals during the warm-up phase', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(FIRST_POLL),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    // Use a long regular interval and a small warmupCount for a fast test
+    const svc = new MetricsService('http://localhost:9090/metrics', 60_000, 3)
+    const onUpdate = vi.fn()
+    svc.onUpdate = onUpdate
+
+    svc.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onUpdate).toHaveBeenCalledTimes(1) // initial poll
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(onUpdate).toHaveBeenCalledTimes(2) // warm-up tick #1
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(onUpdate).toHaveBeenCalledTimes(3) // warm-up tick #2
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(onUpdate).toHaveBeenCalledTimes(4) // warm-up tick #3 (last)
+
+    // Warm-up complete – next tick is at 60 000 ms, not 1 000 ms
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(onUpdate).toHaveBeenCalledTimes(4)
+
+    svc.stop()
+  })
+
+  it('switches to the configured interval after warm-up completes', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(FIRST_POLL),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const svc = new MetricsService('http://localhost:9090/metrics', 10_000, 2)
+    const onUpdate = vi.fn()
+    svc.onUpdate = onUpdate
+
+    svc.start()
+    await vi.advanceTimersByTimeAsync(0)    // initial poll
+    await vi.advanceTimersByTimeAsync(2000) // 2 warm-up ticks → total 3
+    expect(onUpdate).toHaveBeenCalledTimes(3)
+
+    // First regular-interval tick
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(onUpdate).toHaveBeenCalledTimes(4)
+
+    svc.stop()
+  })
+
+  it('does not start duplicate warm-up intervals when start() called twice', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(FIRST_POLL),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const svc = new MetricsService('http://localhost:9090/metrics', 60_000, 3)
+    svc.start()
+    svc.start() // second call should be a no-op
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(3000)
+
+    // Only 4 calls: initial + 3 warm-up ticks (not 8)
+    expect(mockFetch).toHaveBeenCalledTimes(4)
+
+    svc.stop()
+  })
+
+  it('uses WARMUP_COUNT as the default number of rapid polls', () => {
+    expect(WARMUP_COUNT).toBe(60)
   })
 })

@@ -9,6 +9,8 @@ export interface MetricsState {
 }
 
 const DEFAULT_INTERVAL_MS = 10_000;
+const WARMUP_INTERVAL_MS = 1_000;
+const WARMUP_COUNT = 60;
 
 export function usePrometheusMetrics(
   url: string,
@@ -49,15 +51,31 @@ export function usePrometheusMetrics(
     }
   }, []);
 
-  // Re-fetch whenever URL changes
+  // Re-fetch whenever URL changes, with an initial rapid warm-up phase
   useEffect(() => {
     if (!url) {
       setState({ families: [], loading: false, error: null, lastFetch: null });
       return;
     }
+
+    let warmupRemaining = WARMUP_COUNT;
+    let regularTimerId: ReturnType<typeof setInterval> | null = null;
+
     fetchMetrics();
-    const id = setInterval(fetchMetrics, intervalMs);
-    return () => clearInterval(id);
+
+    const warmupTimerId = setInterval(() => {
+      fetchMetrics();
+      warmupRemaining--;
+      if (warmupRemaining <= 0) {
+        clearInterval(warmupTimerId);
+        regularTimerId = setInterval(fetchMetrics, intervalMs);
+      }
+    }, WARMUP_INTERVAL_MS);
+
+    return () => {
+      clearInterval(warmupTimerId);
+      if (regularTimerId !== null) clearInterval(regularTimerId);
+    };
   }, [url, intervalMs, fetchMetrics]);
 
   return state;

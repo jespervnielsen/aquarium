@@ -8,6 +8,10 @@ interface PollSnapshot {
   values: Map<string, number>
 }
 
+const WARMUP_INTERVAL_MS = 1_000
+/** Number of rapid 1-second polls performed on start before switching to the configured interval. */
+export const WARMUP_COUNT = 60
+
 /**
  * Builds a stable string key for a MetricSample so it can be looked up
  * across consecutive polls.
@@ -45,8 +49,10 @@ function buildSnapshotValues(samples: MetricSample[]): Map<string, number> {
 export class MetricsService {
   private readonly url: string
   private readonly intervalMs: number
+  private readonly warmupCount: number
   private previousSnapshot: PollSnapshot | null = null
   private timerId: ReturnType<typeof setInterval> | null = null
+  private warmupTimerId: ReturnType<typeof setInterval> | null = null
 
   /** Callback invoked after each successful poll with the derived metrics */
   onUpdate: ((metrics: DerivedMetrics) => void) | null = null
@@ -57,21 +63,41 @@ export class MetricsService {
   /**
    * @param url - The Prometheus `/metrics` endpoint URL to poll.
    * @param intervalMs - Polling interval in milliseconds (default: 5000).
+   * @param warmupCount - Number of rapid 1-second polls on start before switching to intervalMs (default: 60).
    */
-  constructor(url: string, intervalMs = 5000) {
+  constructor(url: string, intervalMs = 5000, warmupCount = WARMUP_COUNT) {
     this.url = url
     this.intervalMs = intervalMs
+    this.warmupCount = warmupCount
   }
 
   /** Start polling the metrics endpoint. */
   start(): void {
-    if (this.timerId !== null) return
+    if (this.timerId !== null || this.warmupTimerId !== null) return
     void this.poll()
-    this.timerId = setInterval(() => void this.poll(), this.intervalMs)
+    if (this.warmupCount > 0) {
+      let warmupRemaining = this.warmupCount
+      const warmupId = setInterval(() => {
+        void this.poll()
+        warmupRemaining--
+        if (warmupRemaining <= 0) {
+          clearInterval(warmupId)
+          this.warmupTimerId = null
+          this.timerId = setInterval(() => void this.poll(), this.intervalMs)
+        }
+      }, WARMUP_INTERVAL_MS)
+      this.warmupTimerId = warmupId
+    } else {
+      this.timerId = setInterval(() => void this.poll(), this.intervalMs)
+    }
   }
 
   /** Stop polling. */
   stop(): void {
+    if (this.warmupTimerId !== null) {
+      clearInterval(this.warmupTimerId)
+      this.warmupTimerId = null
+    }
     if (this.timerId !== null) {
       clearInterval(this.timerId)
       this.timerId = null
