@@ -1,6 +1,7 @@
 import type { MetricFamily } from './prometheusParser';
 
 export const MAX_FISH = 30;
+export const MAX_CORALS = 12;
 
 export const FISH_COLORS = [
   0xff6b6b, 0xffa07a, 0xffd700, 0x98fb98, 0x87ceeb,
@@ -96,4 +97,52 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
     if (result.length >= MAX_FISH) break;
   }
   return result;
+}
+
+/** Coral types that can be rendered in the aquarium. */
+export const CORAL_TYPES = ['fan', 'branch', 'dome', 'tube', 'star'] as const;
+export type CoralType = (typeof CORAL_TYPES)[number];
+
+/** Deterministically pick a coral type for the given component name. */
+export function hashCoralType(str: string): CoralType {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return CORAL_TYPES[Math.abs(hash) % CORAL_TYPES.length];
+}
+
+export interface CoralInfo {
+  name: string;
+  type: CoralType;
+  color: number;
+  avgLatency: number;
+}
+
+const HTTP_DURATION_PREFIX = 'http_request_duration_seconds';
+
+/** Derive one CoralInfo entry per HTTP component found in the metric families. */
+export function deriveCoralData(families: MetricFamily[]): CoralInfo[] {
+  const seen = new Set<string>();
+  const sumMap: Record<string, number> = {};
+  const countMap: Record<string, number> = {};
+  for (const family of families) {
+    if (!family.name.startsWith(HTTP_DURATION_PREFIX)) continue;
+    for (const sample of family.samples) {
+      const component = sample.labels['component'];
+      if (!component) continue;
+      seen.add(component);
+      if (sample.name.endsWith('_sum')) sumMap[component] = sample.value;
+      else if (sample.name.endsWith('_count')) countMap[component] = sample.value;
+    }
+  }
+  return Array.from(seen)
+    .slice(0, MAX_CORALS)
+    .map((name) => {
+      const avgLatency =
+        sumMap[name] !== undefined && countMap[name] !== undefined && countMap[name] > 0
+          ? sumMap[name] / countMap[name]
+          : 0;
+      return { name, type: hashCoralType(name), color: hashColor(name), avgLatency };
+    });
 }

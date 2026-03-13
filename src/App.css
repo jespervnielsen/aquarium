@@ -425,6 +425,88 @@
   font-size: 0.72rem;
 }
 
+/* ── Coral legend ───────────────────────────────────────────── */
+.coral-legend {
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255 255 255 / 0.08);
+  padding-bottom: 12px;
+}
+
+.coral-legend__title {
+  font-size: 0.78rem;
+  color: rgba(255 255 255 / 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 0 0 6px 0;
+}
+
+.coral-legend__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coral-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.coral-legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.coral-legend__type {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.coral-legend__label {
+  color: #c8dff5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coral-legend__latency {
+  color: #98fb98;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.coral-legend__latency--slow {
+  color: #ff8060;
+}
+
+/* ── Shark / error indicator ────────────────────────────────── */
+.shark-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(220 80 80 / 0.12);
+  border: 1px solid rgba(220 80 80 / 0.25);
+  margin-bottom: 12px;
+  font-size: 0.78rem;
+  color: #f08080;
+}
+
+.shark-indicator__icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
 /* ── Visual guide ───────────────────────────────────────────── */
 .visual-guide {
   margin-bottom: 12px;

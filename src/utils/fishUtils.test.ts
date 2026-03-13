@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveFishData, hashColor, hashPattern, colorToCSS, FISH_COLORS, FISH_PATTERNS } from './fishUtils'
+import { deriveFishData, deriveCoralData, hashColor, hashPattern, hashCoralType, colorToCSS, FISH_COLORS, FISH_PATTERNS, CORAL_TYPES } from './fishUtils'
 import type { MetricFamily } from './prometheusParser'
 
 // ---------------------------------------------------------------------------
@@ -236,5 +236,97 @@ describe('deriveFishData – fallback', () => {
 
   it('returns empty array for empty families', () => {
     expect(deriveFishData([])).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hashCoralType
+// ---------------------------------------------------------------------------
+describe('hashCoralType', () => {
+  it('returns a value from CORAL_TYPES', () => {
+    const type = hashCoralType('payments')
+    expect(CORAL_TYPES).toContain(type)
+  })
+
+  it('is deterministic', () => {
+    expect(hashCoralType('payments')).toBe(hashCoralType('payments'))
+  })
+
+  it('handles empty string without throwing', () => {
+    expect(() => hashCoralType('')).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// deriveCoralData
+// ---------------------------------------------------------------------------
+describe('deriveCoralData', () => {
+  const httpFamilies: MetricFamily[] = [
+    {
+      name: 'http_request_duration_seconds_sum',
+      help: '',
+      type: 'untyped',
+      samples: [
+        { name: 'http_request_duration_seconds_sum', labels: { component: 'payments' }, value: 4.2 },
+        { name: 'http_request_duration_seconds_sum', labels: { component: 'inventory' }, value: 0.6 },
+      ],
+    },
+    {
+      name: 'http_request_duration_seconds_count',
+      help: '',
+      type: 'untyped',
+      samples: [
+        { name: 'http_request_duration_seconds_count', labels: { component: 'payments' }, value: 3 },
+        { name: 'http_request_duration_seconds_count', labels: { component: 'inventory' }, value: 6 },
+      ],
+    },
+  ]
+
+  it('creates one coral per component', () => {
+    const corals = deriveCoralData(httpFamilies)
+    expect(corals).toHaveLength(2)
+    expect(corals.map((c) => c.name)).toContain('payments')
+    expect(corals.map((c) => c.name)).toContain('inventory')
+  })
+
+  it('calculates average latency correctly', () => {
+    const corals = deriveCoralData(httpFamilies)
+    const payments = corals.find((c) => c.name === 'payments')
+    expect(payments).toBeDefined()
+    // 4.2 / 3 = 1.4
+    expect(payments!.avgLatency).toBeCloseTo(1.4, 5)
+    const inventory = corals.find((c) => c.name === 'inventory')
+    expect(inventory).toBeDefined()
+    // 0.6 / 6 = 0.1
+    expect(inventory!.avgLatency).toBeCloseTo(0.1, 5)
+  })
+
+  it('each coral has a type from CORAL_TYPES', () => {
+    const corals = deriveCoralData(httpFamilies)
+    for (const c of corals) {
+      expect(CORAL_TYPES).toContain(c.type)
+    }
+  })
+
+  it('returns avgLatency 0 when count is missing', () => {
+    const sumOnly: MetricFamily[] = [
+      {
+        name: 'http_request_duration_seconds_sum',
+        help: '',
+        type: 'untyped',
+        samples: [{ name: 'http_request_duration_seconds_sum', labels: { component: 'auth' }, value: 5 }],
+      },
+    ]
+    const corals = deriveCoralData(sumOnly)
+    expect(corals).toHaveLength(1)
+    expect(corals[0].avgLatency).toBe(0)
+  })
+
+  it('returns empty array when no http_request_duration_seconds metrics exist', () => {
+    expect(deriveCoralData([])).toHaveLength(0)
+    const unrelated: MetricFamily[] = [
+      { name: 'some_other_metric', help: '', type: 'gauge', samples: [] },
+    ]
+    expect(deriveCoralData(unrelated)).toHaveLength(0)
   })
 })

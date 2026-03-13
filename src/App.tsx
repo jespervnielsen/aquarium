@@ -124,6 +124,7 @@ function App() {
           error={error}
           lastFetch={lastFetch}
           containers={containers}
+          hasErrors={hasErrors}
         />
       </main>
     </div>
