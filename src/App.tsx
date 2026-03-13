@@ -6,6 +6,7 @@ import { TestMetricsControls, type TestScenarios } from './components/TestMetric
 import { usePrometheusMetrics } from './hooks/usePrometheusMetrics';
 import { useTestMetrics } from './hooks/useTestMetrics';
 import { useContainerTracker } from './hooks/useContainerTracker';
+import { useErrorTracker } from './hooks/useErrorTracker';
 import './App.css';
 
 const STORAGE_KEY_URL = 'aquarium:metricsUrl';
@@ -58,6 +59,7 @@ function App() {
   const { families, loading, error, lastFetch } = isTestMode ? testMetricsState : liveMetricsState;
 
   const containers = useContainerTracker(families);
+  const hasErrors = useErrorTracker(families);
 
   const handleSave = useCallback((url: string, interval: number) => {
     setMetricsUrl(url);
@@ -107,6 +109,7 @@ function App() {
             height={canvasSize.height}
             speedMultiplier={isTestMode && testScenarios.trafficSpike ? 3.0 : 1.0}
             containers={containers}
+            hasErrors={hasErrors}
           />
           {!metricsUrl && (
             <div className="canvas-overlay">

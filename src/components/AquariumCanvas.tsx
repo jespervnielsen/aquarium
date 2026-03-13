@@ -16,6 +16,7 @@ interface FishData {
   pattern: FishPattern;
   facingRight: boolean;
   speedScale: number;
+  isPredator?: boolean;
 }
 
 interface BubbleData {
@@ -32,6 +33,9 @@ const CORAL_TYPE_LIST: CoralType[] = ['fan', 'branch', 'dome', 'tube', 'star'];
 const MAX_CORALS = 12;
 const HTTP_DURATION_METRIC_PREFIX = 'http_request_duration_seconds';
 
+/** Key used in the fish map for the predator shark, managed separately from metric-driven fish. */
+const PREDATOR_KEY = '__predator__';
+
 interface AquariumCanvasProps {
   families: MetricFamily[];
   width?: number;
@@ -40,6 +44,8 @@ interface AquariumCanvasProps {
   speedMultiplier?: number;
   /** Tracked container instances to display as status indicators. */
   containers?: ContainerRecord[];
+  /** When true a predator fish appears to represent active errors. */
+  hasErrors?: boolean;
 }
 
 const WATER_COLOR = 0x0a1628;
@@ -62,6 +68,88 @@ function blendColor(base: number, target: number, factor: number): number {
 
 /** Warm orange-red used to tint slow corals. */
 const SLOW_CORAL_COLOR = 0xff4400;
+
+// ─── Time-of-day helpers ──────────────────────────────────────────────────────
+
+/**
+ * Returns the water background gradient colours (top and bottom) for the
+ * given time.  The aquarium lighting shifts from deep night blue through warm
+ * dawn/dusk hues to a brighter daytime blue-green palette.
+ */
+function getSkyGradient(now: Date): { top: number; bottom: number } {
+  const h = now.getHours() + now.getMinutes() / 60;
+
+  if (h >= 7 && h < 18) {
+    // Daytime — brighter cyan-blue water
+    const peak = 1 - Math.abs((h - 12.5) / 5.5) * 0.4; // brightest around midday
+    const topR = Math.round(0x0a + peak * 0x08);
+    const topG = Math.round(0x30 + peak * 0x12);
+    const topB = Math.round(0x52 + peak * 0x18);
+    return { top: (topR << 16) | (topG << 8) | topB, bottom: 0x051828 };
+  }
+  if ((h >= 5 && h < 7) || (h >= 18 && h < 20)) {
+    // Dawn / dusk — muted warm tones in the water
+    return { top: 0x141022, bottom: 0x040a14 };
+  }
+  // Night — deep dark blue
+  return { top: 0x060b18, bottom: 0x040814 };
+}
+
+/**
+ * Draws the sun disc (daytime) or moon (night) at the correct position along
+ * the top of the canvas, plus subtle animated light shafts during the day.
+ */
+function drawLight(gfx: Graphics, tick: number, width: number, height: number, now: Date): void {
+  gfx.clear();
+  const h = now.getHours() + now.getMinutes() / 60;
+  const isDaytime = h >= 6 && h < 20;
+
+  if (isDaytime) {
+    // Sun moves from left (6 am) to right (8 pm) on a gentle arc
+    const t = (h - 6) / 14; // 0 = sunrise, 1 = sunset
+    const sunX = t * width;
+    const arcY = 18 - Math.sin(t * Math.PI) * 22; // arc — lowest at midday
+
+    // Animated light shafts (only during full daytime 7–19)
+    if (h >= 7 && h < 19) {
+      const intensity = Math.max(0, 1 - Math.abs((h - 13) / 6)) * 0.06;
+      for (let i = 0; i < 5; i++) {
+        const bx = (i + 0.5) / 5 * width + Math.sin(tick * 0.005 + i * 1.3) * 25;
+        const sw = 38 + Math.sin(tick * 0.003 + i * 0.8) * 8;
+        gfx.moveTo(bx - sw / 2, 0);
+        gfx.lineTo(bx + sw / 2, 0);
+        gfx.lineTo(bx + sw / 4, height * 0.55);
+        gfx.lineTo(bx - sw / 4, height * 0.55);
+        gfx.fill({ color: 0xffffff, alpha: intensity });
+      }
+    }
+
+    // Glow halo
+    gfx.circle(sunX, arcY, 24);
+    gfx.fill({ color: 0xffee88, alpha: 0.18 });
+    // Sun disc
+    gfx.circle(sunX, arcY, 14);
+    gfx.fill({ color: 0xffdd44, alpha: 0.85 });
+    gfx.circle(sunX, arcY, 9);
+    gfx.fill({ color: 0xffffff, alpha: 0.7 });
+  } else {
+    // Moon moves from right (8 pm) to left (6 am)
+    const moonH = h < 6 ? h + 24 : h; // 20…30
+    const t = (moonH - 20) / 10; // 0 = 8 pm, 1 = 6 am
+    const moonX = width * (1 - t);
+    const arcY = 18 - Math.sin(t * Math.PI) * 18;
+
+    // Glow
+    gfx.circle(moonX, arcY, 18);
+    gfx.fill({ color: 0xaaccff, alpha: 0.12 });
+    // Disc
+    gfx.circle(moonX, arcY, 11);
+    gfx.fill({ color: 0xddeeff, alpha: 0.78 });
+    // Crescent shadow
+    gfx.circle(moonX + 5, arcY - 3, 9);
+    gfx.fill({ color: 0x060b18, alpha: 0.72 });
+  }
+}
 
 function drawCoralAt(gfx: Graphics, type: CoralType, color: number, x: number, y: number, avgLatency: number = 0): void {
   // Tint toward orange-red for high avg latency (≥ 2 s = fully tinted)
@@ -166,7 +254,119 @@ function deriveCoralData(families: MetricFamily[]): { name: string; type: CoralT
   });
 }
 
+// ─── Sandcastle helpers ────────────────────────────────────────────────────────
+
+/**
+ * Draws a sandcastle on the seabed representing one container instance.
+ * Active containers render in warm sand tones with a coloured flag;
+ * inactive/dead containers appear dark and crumbled (no flag).
+ */
+function drawSandcastle(gfx: Graphics, x: number, y: number, isActive: boolean): void {
+  const baseColor = isActive ? 0xd4a853 : 0x4a3818;
+  const wallColor = isActive ? 0xb8943d : 0x3a2808;
+
+  // Base wall
+  gfx.rect(x - 10, y - 18, 20, 18);
+  gfx.fill({ color: baseColor, alpha: 0.88 });
+
+  // Battlements along the top of the base wall
+  for (let i = 0; i < 3; i++) {
+    if (i % 2 === 0) {
+      gfx.rect(x - 10 + i * 8, y - 23, 6, 6);
+      gfx.fill({ color: wallColor, alpha: 0.9 });
+    }
+  }
+
+  // Central tower
+  gfx.rect(x - 5, y - 31, 10, 13);
+  gfx.fill({ color: baseColor, alpha: 0.92 });
+
+  // Tower battlements
+  gfx.rect(x - 5, y - 36, 4, 5);
+  gfx.fill({ color: wallColor, alpha: 0.9 });
+  gfx.rect(x + 1, y - 36, 4, 5);
+  gfx.fill({ color: wallColor, alpha: 0.9 });
+
+  if (isActive) {
+    // Flag pole
+    gfx.moveTo(x, y - 36);
+    gfx.lineTo(x, y - 47);
+    gfx.stroke({ color: 0x888888, width: 1.2, alpha: 0.8 });
+    // Flag pennant
+    gfx.moveTo(x, y - 47);
+    gfx.lineTo(x + 8, y - 43);
+    gfx.lineTo(x, y - 39);
+    gfx.fill({ color: 0xff4444, alpha: 0.88 });
+  }
+}
+
+// ─── Fish helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Draws a predator shark silhouette onto the fish's Graphics objects.
+ * Uses the same FishData container structure as a normal fish.
+ */
+function drawShark(fish: FishData, facingRight: boolean): void {
+  fish.body.clear();
+  fish.eye.clear();
+
+  const bodyColor = 0x5a6a78; // steel blue-grey
+  const bellyColor = 0xc8d8e8; // pale belly
+  const finColor = 0x4a5a68;
+  const dir = facingRight ? 1 : -1;
+
+  // Torpedo body
+  fish.body.ellipse(0, 0, 38, 13);
+  fish.body.fill({ color: bodyColor });
+
+  // Pale belly underside
+  fish.body.ellipse(dir * 3, 4, 28, 7);
+  fish.body.fill({ color: bellyColor, alpha: 0.55 });
+
+  // Forked caudal (tail) — top lobe
+  const tailX = facingRight ? -38 : 38;
+  fish.body.moveTo(tailX, -3);
+  fish.body.lineTo(facingRight ? tailX - 16 : tailX + 16, -16);
+  fish.body.lineTo(facingRight ? tailX - 6 : tailX + 6, 0);
+  fish.body.fill({ color: finColor });
+  // Bottom lobe
+  fish.body.moveTo(tailX, 3);
+  fish.body.lineTo(facingRight ? tailX - 16 : tailX + 16, 16);
+  fish.body.lineTo(facingRight ? tailX - 6 : tailX + 6, 0);
+  fish.body.fill({ color: finColor });
+
+  // Large dorsal fin — the iconic shark silhouette
+  fish.body.moveTo(dir * 0, -13);
+  fish.body.lineTo(dir * 14, -34);
+  fish.body.lineTo(dir * 24, -13);
+  fish.body.fill({ color: finColor, alpha: 0.92 });
+
+  // Pectoral fin
+  fish.body.moveTo(dir * -8, 4);
+  fish.body.lineTo(dir * -22, 20);
+  fish.body.lineTo(dir * 4, 10);
+  fish.body.fill({ color: finColor, alpha: 0.78 });
+
+  // Gill line
+  const gillX = facingRight ? 10 : -10;
+  fish.body.moveTo(gillX, -9);
+  fish.body.lineTo(gillX, 6);
+  fish.body.stroke({ color: finColor, width: 1.5, alpha: 0.6 });
+
+  // Eye — dark with faint red highlight (menacing)
+  const eyeX = facingRight ? 22 : -22;
+  fish.eye.circle(eyeX, -3, 3.5);
+  fish.eye.fill({ color: 0x111111 });
+  fish.eye.circle(eyeX + (facingRight ? 0.3 : -0.3), -3.5, 1.5);
+  fish.eye.fill({ color: 0xcc2222 });
+}
+
 function drawFish(fish: FishData, facingRight: boolean): void {
+  if (fish.isPredator) {
+    drawShark(fish, facingRight);
+    return;
+  }
+
   fish.body.clear();
   fish.eye.clear();
 
@@ -245,7 +445,8 @@ function createFish(
   color: number,
   pattern: FishPattern,
   label: string,
-  speedScale: number = 1.0
+  speedScale: number = 1.0,
+  isPredator: boolean = false
 ): FishData {
   const container = new Container();
   container.label = label;
@@ -280,6 +481,7 @@ function createFish(
     pattern,
     facingRight,
     speedScale,
+    isPredator,
   };
 
   drawFish(fish, facingRight);
@@ -315,12 +517,15 @@ function updateFish(fish: FishData, width: number, height: number, speedMultipli
     fish.container.y = height - 80;
   }
 
-  // Slight random drift
-  fish.vx += (Math.random() - 0.5) * 0.05;
-  fish.vy += (Math.random() - 0.5) * 0.02;
+  // Predators are more erratic; regular fish drift gently
+  const driftX = fish.isPredator ? (Math.random() - 0.5) * 0.12 : (Math.random() - 0.5) * 0.05;
+  const driftY = fish.isPredator ? (Math.random() - 0.5) * 0.06 : (Math.random() - 0.5) * 0.02;
+  fish.vx += driftX;
+  fish.vy += driftY;
 
-  // Clamp speed
-  const maxSpeed = fish.speedScale * 3.0 * speedMultiplier;
+  // Predators get a 1.5× speed bonus on top of the global multiplier
+  const effectiveMultiplier = fish.isPredator ? speedMultiplier * 1.5 : speedMultiplier;
+  const maxSpeed = fish.speedScale * 3.0 * effectiveMultiplier;
   const speed = Math.sqrt(fish.vx * fish.vx + fish.vy * fish.vy);
   if (speed > maxSpeed) {
     fish.vx = (fish.vx / speed) * maxSpeed;
@@ -352,15 +557,13 @@ function createBubble(app: Application, x?: number): BubbleData {
   };
 }
 
-function drawBackground(bg: Graphics, width: number, height: number): void {
+function drawBackground(bg: Graphics, width: number, height: number, now: Date): void {
   bg.clear();
-  // Water gradient via layered fills
+  const { top, bottom } = getSkyGradient(now);
+  // Water gradient via layered fills — lighter near the surface, deeper at the seabed
   for (let i = 0; i < 8; i++) {
     const ratio = i / 7;
-    const r = Math.round(0x0a + (0x05 - 0x0a) * ratio);
-    const g = Math.round(0x16 + (0x30 - 0x16) * ratio);
-    const b = Math.round(0x28 + (0x50 - 0x28) * ratio);
-    const color = (r << 16) | (g << 8) | b;
+    const color = blendColor(top, bottom, ratio);
     const bandH = height / 8;
     bg.rect(0, i * bandH, width, bandH + 1);
     bg.fill({ color });
@@ -417,13 +620,21 @@ function drawSurface(surf: Graphics, tick: number, width: number): void {
   surf.fill({ color: 0x1a8ccc, alpha: 0.25 });
 }
 
-export function AquariumCanvas({ families, width = 900, height = 600, speedMultiplier = 1.0, containers = [] }: AquariumCanvasProps) {
+export function AquariumCanvas({
+  families,
+  width = 900,
+  height = 600,
+  speedMultiplier = 1.0,
+  containers = [],
+  hasErrors = false,
+}: AquariumCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const fishRef = useRef<Map<string, FishData>>(new Map());
   const bubblesRef = useRef<BubbleData[]>([]);
   const tickRef = useRef(0);
   const coralGfxRef = useRef<Graphics | null>(null);
+  const castleGfxRef = useRef<Graphics | null>(null);
   const containerGfxRef = useRef<Graphics | null>(null);
   const speedMultiplierRef = useRef<number>(speedMultiplier);
   speedMultiplierRef.current = speedMultiplier;
@@ -433,6 +644,7 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
     let destroyed = false;
     const app = new Application();
     const fishMap = fishRef.current;
+    const lastMinute = { value: -1 };
 
     (async () => {
       await app.init({
@@ -454,44 +666,57 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
         canvasRef.current.appendChild(app.canvas);
       }
 
-      // Background layers
+      // ── Layer stack (bottom → top) ──────────────────────────────────────────
+      // 1. Background gradient (time-of-day colours)
       const bgLayer = new Container();
       const bg = new Graphics();
       bgLayer.addChild(bg);
       app.stage.addChild(bgLayer);
 
+      // 2. Light layer: sun/moon disc + daytime light shafts
+      const lightGfx = new Graphics();
+      app.stage.addChild(lightGfx);
+
+      // 3. Fish + bubbles layer (behind seabed structures)
+      const fishLayer = new Container();
+      app.stage.addChild(fishLayer);
+
+      // 4. Seabed: sand floor + rocks + sandcastles + corals
       const seabedLayer = new Container();
       const seabed = new Graphics();
       seabedLayer.addChild(seabed);
+
+      const castleGfx = new Graphics();
+      seabedLayer.addChild(castleGfx);
+      castleGfxRef.current = castleGfx;
 
       const coralGfx = new Graphics();
       seabedLayer.addChild(coralGfx);
       coralGfxRef.current = coralGfx;
 
-      // Overlay for container status indicators (drawn above everything else)
-      const containerGfx = new Graphics();
-      containerGfxRef.current = containerGfx;
+      app.stage.addChild(seabedLayer);
 
+      // 5. Seaweed layer
       const weedLayer = new Container();
       const seaweed = new Graphics();
       weedLayer.addChild(seaweed);
-
-      const fishLayer = new Container();
-      app.stage.addChild(fishLayer);
-
-      app.stage.addChild(seabedLayer);
       app.stage.addChild(weedLayer);
 
+      // 6. Surface water line
       const surfaceLayer = new Container();
       const surface = new Graphics();
       surfaceLayer.addChild(surface);
       app.stage.addChild(surfaceLayer);
 
-      // Container indicators sit above the surface layer
+      // 7. Container status indicators sit above the surface layer
+      const containerGfx = new Graphics();
+      containerGfxRef.current = containerGfx;
       app.stage.addChild(containerGfx);
 
       // Initial draw
-      drawBackground(bg, app.canvas.width, app.canvas.height);
+      const now = new Date();
+      drawBackground(bg, app.canvas.width, app.canvas.height, now);
+      drawLight(lightGfx, 0, app.canvas.width, app.canvas.height, now);
       drawSeabed(seabed, app.canvas.width, app.canvas.height);
 
       // Pre-populate some bubbles
@@ -512,6 +737,17 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
         const tick = tickRef.current;
         const w = app.canvas.width;
         const h = app.canvas.height;
+        const tickNow = new Date();
+
+        // Redraw background once per minute (time-of-day colours change slowly)
+        const currentMinute = tickNow.getMinutes();
+        if (currentMinute !== lastMinute.value) {
+          lastMinute.value = currentMinute;
+          drawBackground(bg, w, h, tickNow);
+        }
+
+        // Redraw light layer every frame (animated light shafts + sun/moon arc)
+        drawLight(lightGfx, tick, w, h, tickNow);
 
         drawSeaweed(seaweed, tick, w, h);
         drawSurface(surface, tick, w);
@@ -546,6 +782,7 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
     return () => {
       destroyed = true;
       coralGfxRef.current = null;
+      castleGfxRef.current = null;
       containerGfxRef.current = null;
       if (appRef.current) {
         appRef.current.destroy(true);
@@ -568,8 +805,9 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
     const desiredKeys = new Set(desired.map((d) => d.label));
     const existingKeys = new Set(fishRef.current.keys());
 
-    // Remove fish that are no longer needed
+    // Remove fish that are no longer needed.  The predator is managed separately.
     for (const key of existingKeys) {
+      if (key === PREDATOR_KEY) continue;
       if (!desiredKeys.has(key)) {
         const fish = fishRef.current.get(key)!;
         fishLayer.removeChild(fish.container);
@@ -611,7 +849,27 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
     });
   }, [families]);
 
-  // Draw container status indicators as small dots in the top-left corner
+  // Draw sandcastles on the seabed — one per tracked container instance
+  useEffect(() => {
+    const app = appRef.current;
+    const castleGfx = castleGfxRef.current;
+    if (!app || !castleGfx) return;
+
+    castleGfx.clear();
+    if (containers.length === 0) return;
+
+    const w = app.canvas.width;
+    const h = app.canvas.height;
+
+    // Cap to avoid severe overlap on small canvases
+    const maxCastles = Math.min(containers.length, 20);
+    for (let i = 0; i < maxCastles; i++) {
+      const cx = ((i + 0.5) / maxCastles) * w;
+      drawSandcastle(castleGfx, cx, h - 40, containers[i].isUp);
+    }
+  }, [containers]);
+
+  // Draw container status indicator dots in the top-left corner
   useEffect(() => {
     const containerGfx = containerGfxRef.current;
     if (!containerGfx) return;
@@ -635,6 +893,29 @@ export function AquariumCanvas({ families, width = 900, height = 600, speedMulti
       }
     });
   }, [containers]);
+
+  // Add or remove the predator shark based on the hasErrors flag
+  useEffect(() => {
+    const app = appRef.current;
+    if (!app) return;
+    const fishLayer = (app as unknown as { fishLayer?: Container }).fishLayer;
+    if (!fishLayer) return;
+
+    if (hasErrors) {
+      if (!fishRef.current.has(PREDATOR_KEY)) {
+        // Dark grey, plain pattern, elevated speed scale
+        const shark = createFish(app, fishLayer, 0x5a6a78, 'plain', PREDATOR_KEY, 2.2, true);
+        fishRef.current.set(PREDATOR_KEY, shark);
+      }
+    } else {
+      const predator = fishRef.current.get(PREDATOR_KEY);
+      if (predator) {
+        fishLayer.removeChild(predator.container);
+        predator.container.destroy();
+        fishRef.current.delete(PREDATOR_KEY);
+      }
+    }
+  }, [hasErrors]);
 
   return (
     <div
