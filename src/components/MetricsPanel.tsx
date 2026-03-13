@@ -1,5 +1,5 @@
 import type { MetricFamily } from '../utils/prometheusParser';
-import { deriveFishData, colorToCSS, type FishPattern } from '../utils/fishUtils';
+import { deriveFishData, deriveCoralData, colorToCSS, type FishPattern, type CoralType } from '../utils/fishUtils';
 import type { ContainerRecord } from '../hooks/useContainerTracker';
 
 /** Returns a CSS backgroundImage value that overlays the given pattern on a solid colour swatch. */
@@ -22,16 +22,30 @@ function patternToCSS(pattern: FishPattern): string {
   }
 }
 
+/** Returns an emoji representing each coral type for compact display. */
+function coralTypeEmoji(type: CoralType): string {
+  switch (type) {
+    case 'fan': return '🪭';
+    case 'branch': return '🌿';
+    case 'dome': return '🔵';
+    case 'tube': return '🧪';
+    case 'star': return '⭐';
+    default: return '🪸';
+  }
+}
+
 interface MetricsPanelProps {
   families: MetricFamily[];
   loading: boolean;
   error: string | null;
   lastFetch: Date | null;
   containers: ContainerRecord[];
+  hasErrors: boolean;
 }
 
-export function MetricsPanel({ families, loading, error, lastFetch, containers }: MetricsPanelProps) {
+export function MetricsPanel({ families, loading, error, lastFetch, containers, hasErrors }: MetricsPanelProps) {
   const fishList = deriveFishData(families);
+  const coralList = deriveCoralData(families);
 
   return (
     <aside className="metrics-panel">
@@ -105,6 +119,50 @@ export function MetricsPanel({ families, loading, error, lastFetch, containers }
             ))}
           </ul>
         </section>
+      )}
+
+      {coralList.length > 0 && (
+        <section className="coral-legend">
+          <h4 className="coral-legend__title">Corals</h4>
+          <ul className="coral-legend__list">
+            {coralList.map((coral) => {
+              const latencyFactor = Math.min(coral.avgLatency / 2.0, 1.0);
+              const r = Math.round((0xff * latencyFactor + 0x00 * (1 - latencyFactor)));
+              const g = Math.round((0x44 * latencyFactor + 0x80 * (1 - latencyFactor)));
+              const b = Math.round((0x00 * latencyFactor + 0x80 * (1 - latencyFactor)));
+              const swatchColor =
+                latencyFactor > 0
+                  ? `rgb(${r}, ${g}, ${b})`
+                  : colorToCSS(coral.color);
+              return (
+                <li key={coral.name} className="coral-legend__item">
+                  <span
+                    className="coral-legend__swatch"
+                    style={{ backgroundColor: swatchColor }}
+                  />
+                  <span className="coral-legend__type" title={coral.type}>
+                    {coralTypeEmoji(coral.type)}
+                  </span>
+                  <span className="coral-legend__label" title={coral.name}>
+                    {coral.name}
+                  </span>
+                  <span
+                    className={['coral-legend__latency', coral.avgLatency >= 1 ? 'coral-legend__latency--slow' : ''].filter(Boolean).join(' ')}
+                  >
+                    {coral.avgLatency > 0 ? `${coral.avgLatency.toFixed(2)} s` : '—'}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {hasErrors && (
+        <div className="shark-indicator">
+          <span className="shark-indicator__icon">🦈</span>
+          <span>Active errors detected — predator shark is circling!</span>
+        </div>
       )}
 
       <section className="visual-guide">
