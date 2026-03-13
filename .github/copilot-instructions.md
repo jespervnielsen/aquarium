@@ -19,13 +19,21 @@ src/
     TestMetricsControls.tsx    # Dev-only controls for test scenario toggles
   hooks/
     usePrometheusMetrics.ts    # Custom hook: fetches and parses Prometheus text format
+    useContainerTracker.ts     # Tracks container instances via process_start_time_seconds; 5-min default timeout
+    useTestMetrics.ts          # Runs the metrics simulator in-browser for static hosting (GitHub Pages)
+  utils/
+    prometheusParser.ts        # Parses Prometheus exposition text into MetricFamily/MetricSample objects
+    fishUtils.ts               # Fish colour hashing, MAX_FISH constant, and display helpers
+  metrics/
+    types.ts                   # Shared MetricSample and DerivedMetrics TypeScript types
+    prometheusParser.ts        # Low-level parser producing MetricSample[]
+    metricsService.ts          # Stateful service: polls endpoint, computes deltas between snapshots
   config/
     queries.json               # Manual overrides for GraphQL query → fish species
     components.json            # Manual overrides for HTTP component → coral type
   discovery.ts                 # Core logic: metric parsing, species/coral registry
   discovery.test.ts            # Vitest unit tests for discovery.ts
-  metrics/                     # Metric-family types and helpers
-  dev/                         # Dev-server mock metrics endpoint
+  dev/                         # Dev-server mock metrics endpoint and metricsSimulator
 ```
 
 ## Development workflow
@@ -57,7 +65,8 @@ Always run `npm run lint` and `npm run test` before opening or updating a pull r
 
 - **Species registry** (`SpeciesRegistry` in `discovery.ts`): maps Prometheus metric names to fish/coral visual properties. Auto-generates deterministic colors and shapes via `hashName`. Manual overrides live in `src/config/queries.json` and `src/config/components.json`.
 - **Prometheus parsing** (`parseMetrics` in `discovery.ts`): parses raw Prometheus text format lines; looks for `graphql_query_counter{queryName="..."}` and `http_request_duration_seconds_*{component="..."}` patterns.
-- **Test mode**: Setting the endpoint URL to the special `TEST_ENDPOINT_URL` constant activates a local mock that serves synthetic metric data; `TestMetricsControls` lets you toggle named scenarios.
+- **Container tracking** (`useContainerTracker` in `src/hooks/useContainerTracker.ts`): identifies individual container instances via the `process_start_time_seconds` gauge; marks a container as down after 5 minutes of inactivity.
+- **Test mode**: Setting the endpoint URL to the special `TEST_ENDPOINT_URL` constant activates a local mock that serves synthetic metric data; `TestMetricsControls` lets you toggle named scenarios. On static hosts (GitHub Pages), `useTestMetrics` runs the simulator directly in the browser so no dev-server middleware is needed.
 - **Responsive canvas**: Canvas size is computed from `window.innerWidth` minus the sidebar width; recalculated on every `resize` event.
 
 ## Deployment
