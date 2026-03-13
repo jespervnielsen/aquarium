@@ -59,21 +59,28 @@ export function deriveFishData(families: MetricFamily[]): FishInfo[] {
     return result.slice(0, MAX_FISH);
   }
 
-  // Use graphql_query_counter for query-based fish with count-driven speed scaling
+  // Use graphql_query_counter for query-based fish with count-driven speed scaling.
+  // Aggregate by queryName so multiple container instances are summed into one fish.
   const queryFamily = families.find((f) => f.name === 'graphql_query_counter');
   if (queryFamily && queryFamily.samples.length > 0) {
-    let maxCount = 0;
-    for (const s of queryFamily.samples) {
-      if (s.value > maxCount) maxCount = s.value;
-    }
-    const logMax = Math.log(maxCount + 1);
+    const queryTotals = new Map<string, number>();
     for (const sample of queryFamily.samples) {
       const queryName = sample.labels['queryName'];
       if (!queryName) continue;
-      const logCount = Math.log(sample.value + 1);
+      queryTotals.set(queryName, (queryTotals.get(queryName) ?? 0) + sample.value);
+    }
+
+    let maxCount = 0;
+    for (const count of queryTotals.values()) {
+      if (count > maxCount) maxCount = count;
+    }
+    const logMax = Math.log(maxCount + 1);
+
+    for (const [queryName, total] of queryTotals) {
+      const logCount = Math.log(total + 1);
       // Scale from 0.5 (rare query) to 2.5 (most-used query)
       const speedScale = 0.5 + (logMax > 0 ? logCount / logMax : 0) * 2.0;
-      result.push({ label: queryName, color: hashColor(queryName), pattern: hashPattern(queryName), isUp: true, value: sample.value, speedScale });
+      result.push({ label: queryName, color: hashColor(queryName), pattern: hashPattern(queryName), isUp: true, value: total, speedScale });
     }
     if (result.length > 0) return result.slice(0, MAX_FISH);
   }

@@ -164,6 +164,33 @@ describe('deriveFishData – graphql_query_counter', () => {
     expect(bn.speedScale).toBeCloseTo(2.5, 5)
   })
 
+  it('aggregates samples with the same queryName (multi-container scenario)', () => {
+    const multiContainerFamilies: MetricFamily[] = [
+      {
+        name: 'graphql_query_counter',
+        help: 'Number of queries',
+        type: 'counter',
+        samples: [
+          // Two containers both reporting the same queryName
+          { name: 'graphql_query_counter', labels: { queryName: 'breakingNews', instance: 'pod-1' }, value: 10000 },
+          { name: 'graphql_query_counter', labels: { queryName: 'breakingNews', instance: 'pod-2' }, value: 9893 },
+          { name: 'graphql_query_counter', labels: { queryName: 'queryAlpha', instance: 'pod-1' }, value: 6000 },
+          { name: 'graphql_query_counter', labels: { queryName: 'queryAlpha', instance: 'pod-2' }, value: 6885 },
+        ],
+      },
+    ]
+
+    const fish = deriveFishData(multiContainerFamilies)
+    // Should produce one fish per unique queryName, not one per sample
+    expect(fish).toHaveLength(2)
+    expect(fish.map((f) => f.label)).toContain('breakingNews')
+    expect(fish.map((f) => f.label)).toContain('queryAlpha')
+
+    // The aggregated value should be the sum across containers
+    const bn = fish.find((f) => f.label === 'breakingNews')!
+    expect(bn.value).toBe(19893)
+  })
+
   it('all fish are marked isUp', () => {
     const fish = deriveFishData(queryFamilies)
     for (const f of fish) {
