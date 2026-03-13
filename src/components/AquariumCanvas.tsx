@@ -51,6 +51,8 @@ interface AquariumCanvasProps {
 }
 
 const WATER_COLOR = 0x0a1628;
+/** Alpha value applied to fish whose service is reported as DOWN. */
+const FISH_DOWN_ALPHA = 0.35;
 
 function hashCoralType(str: string): CoralType {
   let hash = 0;
@@ -825,13 +827,13 @@ export function AquariumCanvas({
       const hidden = hiddenLabelsRef.current?.has(label) ?? false;
       if (!fishRef.current.has(label)) {
         const fish = createFish(app, fishLayer, color, pattern, label, speedScale);
-        fish.container.alpha = isUp ? 1.0 : 0.35;
+        fish.container.alpha = isUp ? 1.0 : FISH_DOWN_ALPHA;
         fish.container.visible = !hidden;
         fishRef.current.set(label, fish);
       } else {
         // Update alive/dead state and visibility
         const fish = fishRef.current.get(label)!;
-        fish.container.alpha = isUp ? 1.0 : 0.35;
+        fish.container.alpha = isUp ? 1.0 : FISH_DOWN_ALPHA;
         fish.container.visible = !hidden;
       }
     }
@@ -852,13 +854,14 @@ export function AquariumCanvas({
     if (!app || !coralGfx) return;
 
     const allCorals = deriveCoralData(families);
+    const indexMap = new Map(allCorals.map((c, i) => [c.name, i]));
     const visibleCorals = allCorals.filter((c) => !(hiddenLabels?.has(c.name) ?? false));
     const w = app.canvas.width;
     const h = app.canvas.height;
 
     coralGfx.clear();
     visibleCorals.forEach(({ name, type, color, avgLatency }) => {
-      const idx = allCorals.findIndex((c) => c.name === name);
+      const idx = indexMap.get(name)!;
       const x = ((idx + 0.5) / allCorals.length) * w;
       drawCoralAt(coralGfx, type, color, x, h - 40, avgLatency);
     });

@@ -47,8 +47,8 @@ interface MetricsPanelProps {
 }
 
 export function MetricsPanel({ families, loading, error, lastFetch, containers, hasErrors, hiddenItems, onToggleItem, onToggleAll }: MetricsPanelProps) {
-  const fishList = deriveFishData(families).slice().sort((a, b) => a.label.localeCompare(b.label));
-  const coralList = deriveCoralData(families).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const fishList = deriveFishData(families).sort((a, b) => a.label.localeCompare(b.label));
+  const coralList = deriveCoralData(families).sort((a, b) => a.name.localeCompare(b.name));
 
   const fishLabels = fishList.map((f) => f.label);
   const coralLabels = coralList.map((c) => c.name);
