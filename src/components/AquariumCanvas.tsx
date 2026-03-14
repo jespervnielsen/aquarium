@@ -460,8 +460,8 @@ function createFish(
   container.addChild(body);
   container.addChild(eye);
 
-  const width = app.canvas.width;
-  const height = app.canvas.height;
+  const width = app.renderer.width;
+  const height = app.renderer.height;
 
   const x = Math.random() * width;
   const y = 80 + Math.random() * (height - 160);
@@ -544,8 +544,8 @@ function updateFish(fish: FishData, width: number, height: number, speedMultipli
 
 function createBubble(app: Application, x?: number): BubbleData {
   const gfx = new Graphics();
-  const width = app.canvas.width;
-  const height = app.canvas.height;
+  const width = app.renderer.width;
+  const height = app.renderer.height;
   const rx = x ?? Math.random() * width;
   const radius = 2 + Math.random() * 5;
   gfx.circle(0, 0, radius);
@@ -641,6 +641,7 @@ export function AquariumCanvas({
   const coralGfxRef = useRef<Graphics | null>(null);
   const castleGfxRef = useRef<Graphics | null>(null);
   const containerGfxRef = useRef<Graphics | null>(null);
+  const seabedGfxRef = useRef<Graphics | null>(null);
   const fishLayerRef = useRef<Container | null>(null);
   const lastMinuteRef = useRef(-1);
   const speedMultiplierRef = useRef<number>(speedMultiplier);
@@ -703,6 +704,8 @@ export function AquariumCanvas({
       seabedLayer.addChild(coralGfx);
       coralGfxRef.current = coralGfx;
 
+      seabedGfxRef.current = seabed;
+
       app.stage.addChild(seabedLayer);
 
       // 5. Seaweed layer
@@ -724,14 +727,14 @@ export function AquariumCanvas({
 
       // Initial draw
       const now = new Date();
-      drawBackground(bg, app.canvas.width, app.canvas.height, now);
-      drawLight(lightGfx, 0, app.canvas.width, app.canvas.height, now);
-      drawSeabed(seabed, app.canvas.width, app.canvas.height);
+      drawBackground(bg, width, height, now);
+      drawLight(lightGfx, 0, width, height, now);
+      drawSeabed(seabed, width, height);
 
       // Pre-populate some bubbles
       for (let i = 0; i < 12; i++) {
         const b = createBubble(app);
-        b.y = Math.random() * app.canvas.height;
+        b.y = Math.random() * height;
         b.gfx.position.set(b.x, b.y);
         bubblesRef.current.push(b);
         fishLayer.addChild(b.gfx);
@@ -741,8 +744,8 @@ export function AquariumCanvas({
         if (destroyed) return;
         tickRef.current += ticker.deltaTime;
         const tick = tickRef.current;
-        const w = app.canvas.width;
-        const h = app.canvas.height;
+        const w = app.renderer.width;
+        const h = app.renderer.height;
         const tickNow = new Date();
 
         // Redraw background once per minute (time-of-day colours change slowly)
@@ -790,6 +793,7 @@ export function AquariumCanvas({
       coralGfxRef.current = null;
       castleGfxRef.current = null;
       containerGfxRef.current = null;
+      seabedGfxRef.current = null;
       fishLayerRef.current = null;
       if (appRef.current) {
         appRef.current.destroy(true);
@@ -800,6 +804,17 @@ export function AquariumCanvas({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Resize PixiJS renderer when canvas dimensions change
+  useEffect(() => {
+    const app = appRef.current;
+    const seabedGfx = seabedGfxRef.current;
+    if (!app || !seabedGfx) return;
+    app.renderer.resize(width, height);
+    drawSeabed(seabedGfx, width, height);
+    // Force background to redraw on the next ticker tick
+    lastMinuteRef.current = -1;
+  }, [width, height]);
 
   // Sync fish with metrics
   useEffect(() => {
@@ -856,8 +871,8 @@ export function AquariumCanvas({
     const allCorals = deriveCoralData(families);
     const indexMap = new Map(allCorals.map((c, i) => [c.name, i]));
     const visibleCorals = allCorals.filter((c) => !(hiddenLabels?.has(c.name) ?? false));
-    const w = app.canvas.width;
-    const h = app.canvas.height;
+    const w = app.renderer.width;
+    const h = app.renderer.height;
 
     coralGfx.clear();
     visibleCorals.forEach(({ name, type, color, avgLatency }) => {
@@ -865,7 +880,7 @@ export function AquariumCanvas({
       const x = ((idx + 0.5) / allCorals.length) * w;
       drawCoralAt(coralGfx, type, color, x, h - 40, avgLatency);
     });
-  }, [families, hiddenLabels]);
+  }, [families, hiddenLabels, width, height]);
 
   // Draw sandcastles on the seabed — one per tracked container instance
   useEffect(() => {
@@ -876,8 +891,8 @@ export function AquariumCanvas({
     castleGfx.clear();
     if (containers.length === 0) return;
 
-    const w = app.canvas.width;
-    const h = app.canvas.height;
+    const w = app.renderer.width;
+    const h = app.renderer.height;
 
     // Cap to avoid severe overlap on small canvases
     const maxCastles = Math.min(containers.length, 20);
@@ -885,7 +900,7 @@ export function AquariumCanvas({
       const cx = ((i + 0.5) / maxCastles) * w;
       drawSandcastle(castleGfx, cx, h - 40, containers[i].isUp);
     }
-  }, [containers]);
+  }, [containers, width, height]);
 
   // Draw container status indicator dots in the top-left corner
   useEffect(() => {
